@@ -3,7 +3,7 @@
 
 - Yesterday: each coin's daily move (Binance daily candle, UTC day) plus crypto
   news headlines from that day, grouped by coin and market-wide topics.
-- Next 7 days: scheduled high-impact US economic events (Forex Factory's public
+- Next 7 days: scheduled high- and medium-impact US economic events (Forex Factory's public
   calendar feed) and recent headlines that mention upcoming crypto events.
 
 Rule-based and free: no AI, no API keys. Uses only the Python standard library.
@@ -38,19 +38,29 @@ CALENDAR_FEEDS = [
 TOPICS = {
     "BTC": ["bitcoin", "btc"],
     "ETH": ["ethereum", "ether", "eth"],
-    "BNB": ["bnb", "binance", "bnb chain"],
+    "BNB": ["bnb", "bnb chain", "bnbchain"],
     "Market-wide": [
         "fed", "fomc", "powell", "interest rate", "rate cut", "rate hike", "inflation", "cpi",
         "jobs report", "payrolls", "sec", "etf", "etfs", "regulation", "regulator", "stablecoin",
-        "tariff", "tariffs", "treasury", "crypto market", "liquidation", "liquidations",
+        "tariff", "tariffs", "us treasury", "u.s. treasury", "treasury yield", "treasury yields",
+        "bond yields", "crypto market", "liquidation", "liquidations",
     ],
 }
+# "Binance" alone is often just a former employee or a partner, so it only counts for BNB
+# when the headline is about the exchange itself.
+BINANCE_EXCHANGE_WORDS = [
+    "hack", "hacked", "exploit", "outage", "halt", "halts", "halted", "suspend", "suspends",
+    "withdrawal", "withdrawals", "deposit", "deposits", "delist", "delists", "lists", "listing",
+    "launchpool", "sec", "doj", "cftc", "regulator", "regulators", "fine", "fined", "lawsuit",
+    "license", "ban", "banned", "reserves", "cz", "changpeng zhao", "richard teng",
+]
 # Headlines that point at something scheduled.
 UPCOMING_WORDS = [
     "upgrade", "hard fork", "fork", "unlock", "unlocks", "deadline", "vote", "mainnet",
     "launch", "launches", "listing", "decision", "hearing", "next week", "this week",
     "tomorrow", "scheduled", "expiry", "expiration", "approval",
 ]
+IMPACTS = {"High": "🔴 High", "Medium": "🟠 Medium"}
 MAX_PER_GROUP = 8
 MAX_UPCOMING = 8
 
@@ -63,6 +73,12 @@ def fetch_text(url):
 
 def matches(text, words):
     return any(re.search(rf"(?<![\w-]){re.escape(w)}(?![\w-])", text, re.I) for w in words)
+
+
+def in_topic(name, title):
+    if matches(title, TOPICS[name]):
+        return True
+    return name == "BNB" and matches(title, ["binance"]) and matches(title, BINANCE_EXCHANGE_WORDS)
 
 
 # --- data ----------------------------------------------------------------------
@@ -132,17 +148,17 @@ def group_headlines(items, start, end):
     for it in items:
         if not (start <= it["time"] < end):
             continue
-        for name, words in TOPICS.items():
-            if matches(it["title"], words) and len(groups[name]) < MAX_PER_GROUP:
+        for name in TOPICS:
+            if in_topic(name, it["title"]) and len(groups[name]) < MAX_PER_GROUP:
                 groups[name].append(it)
     return groups
 
 
 def upcoming_headlines(items, since):
-    coin_words = [w for name in ("BTC", "ETH", "BNB") for w in TOPICS[name]]
     picked = []
     for it in items:
-        if it["time"] >= since and matches(it["title"], UPCOMING_WORDS) and matches(it["title"], coin_words):
+        about_coin = any(in_topic(name, it["title"]) for name in ("BTC", "ETH", "BNB"))
+        if it["time"] >= since and matches(it["title"], UPCOMING_WORDS) and about_coin:
             picked.append(it)
             if len(picked) >= MAX_UPCOMING:
                 break
@@ -150,7 +166,7 @@ def upcoming_headlines(items, since):
 
 
 def calendar(now, days=7):
-    """High-impact US events from now until now + days, plus how far the feeds reach."""
+    """High- and medium-impact US events from now until now + days, plus how far the feeds reach."""
     events, reach, failed = [], None, []
     for url in CALENDAR_FEEDS:
         try:
@@ -165,8 +181,8 @@ def calendar(now, days=7):
             except (KeyError, ValueError):
                 continue
             reach = max(reach, when) if reach else when
-            if e.get("country") == "USD" and e.get("impact") == "High" and now <= when < now + timedelta(days=days):
-                events.append({"time": when, "title": e.get("title", ""),
+            if e.get("country") == "USD" and e.get("impact") in IMPACTS and now <= when < now + timedelta(days=days):
+                events.append({"time": when, "title": e.get("title", ""), "impact": e["impact"],
                                "forecast": e.get("forecast") or "", "previous": e.get("previous") or ""})
     unique = {(ev["time"], ev["title"]): ev for ev in events}
     return sorted(unique.values(), key=lambda ev: ev["time"]), reach, failed
@@ -212,19 +228,20 @@ def render(now, day_start, moves, groups, events, reach, upcoming, failed):
         lines += [headline_line(it) for it in items] or ["- _No matching headlines._"]
         lines.append("")
 
-    lines += ["## Next 7 days", "", "### Scheduled high-impact US economic events", ""]
+    lines += ["## Next 7 days", "", "### Scheduled US economic events (high and medium impact)", ""]
     if events:
-        lines += ["| When (Vietnam time) | Event | Forecast | Previous |", "|---|---|---:|---:|"]
-        lines += [f"| {vn(ev['time'])} | {ev['title']} | {ev['forecast'] or '–'} | {ev['previous'] or '–'} |"
-                  for ev in events]
+        lines += ["| When (Vietnam time) | Impact | Event | Forecast | Previous |", "|---|---|---|---:|---:|"]
+        lines += [f"| {vn(ev['time'])} | {IMPACTS[ev['impact']]} | {ev['title']} "
+                  f"| {ev['forecast'] or '–'} | {ev['previous'] or '–'} |" for ev in events]
     else:
-        lines.append("_No high-impact US events found in the calendar for this period._")
+        lines.append("_No high- or medium-impact US events found in the calendar for this period._")
     if reach and reach < now + timedelta(days=7):
         lines.append(f"\n_The calendar feed only reaches {vn(reach, '%a %d %b')}; later events are not published yet._")
     lines += [
         "",
-        "These releases (Fed decisions and speeches, inflation, jobs, GDP) often move BTC, ETH and BNB "
-        "because they change expectations for interest rates and risk appetite.",
+        "High-impact releases (Fed decisions and speeches, inflation, jobs, GDP) often move BTC, ETH and BNB "
+        "because they change expectations for interest rates and risk appetite; medium-impact ones usually "
+        "matter less unless they surprise.",
         "",
         "### Crypto items mentioned in recent news (last 3 days)",
         "",
@@ -247,11 +264,13 @@ def push_text(moves, events, groups):
     lines = ["Yesterday: " + ", ".join(parts) if parts else "Yesterday: price data unavailable"]
     n_news = len({it["link"] for items in groups.values() for it in items})
     lines.append(f"{n_news} related headlines")
+    high = [ev for ev in events if ev["impact"] == "High"]
     if events:
-        nxt = events[0]
-        lines.append(f"Next 7 days: {len(events)} high-impact US events. Next: {nxt['title']} {vn(nxt['time'])}")
+        nxt = (high or events)[0]
+        lines.append(f"Next 7 days: {len(high)} high / {len(events) - len(high)} medium-impact US events. "
+                     f"Next {nxt['impact'].lower()}: {nxt['title']} {vn(nxt['time'])}")
     else:
-        lines.append("Next 7 days: no high-impact US events found")
+        lines.append("Next 7 days: no high- or medium-impact US events found")
     return "\n".join(lines)
 
 

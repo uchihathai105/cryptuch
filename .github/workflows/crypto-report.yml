@@ -2,13 +2,9 @@ name: Crypto Report
 
 on:
   schedule:
-    - cron: "*/10 * * * *" # every 10 minutes (GitHub may delay scheduled runs under load)
+    # Every 10 minutes, offset from round minutes: GitHub often delays or drops scheduled runs at :00, :10, ...
+    - cron: "7-59/10 * * * *"
   workflow_dispatch:
-    inputs:
-      test_notification:
-        description: Send a push notification with the current signals even if nothing changed
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -44,7 +40,7 @@ jobs:
         env:
           PREV_REPORT_PATH: PREV_REPORT.md
           NOTIFY_PATH: NOTIFY.txt
-          NOTIFY_ALWAYS: ${{ inputs.test_notification }}
+          NOTIFY_ALWAYS: "true" # push on every run; signal changes are marked "OLD → NEW"
         run: python3 report.py
 
       - name: Show report in run summary
@@ -67,17 +63,23 @@ jobs:
           REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.number }}
         run: |
           if [ ! -s NOTIFY.txt ]; then
-            echo "No signal change; nothing to send."
+            echo "Nothing to send (no coin data this run)."
             exit 0
           fi
           if [ -z "$NTFY_TOPIC" ]; then
-            echo "::warning::A signal changed but the NTFY_TOPIC secret is not set, so no push was sent."
+            echo "::warning::The NTFY_TOPIC secret is not set, so no push was sent."
             exit 0
           fi
+          # A changed signal gets a louder, distinct push; routine updates use normal priority.
+          if grep -q "→" NOTIFY.txt; then
+            title="Crypto signal CHANGED"; priority=high; tags=rotating_light
+          else
+            title="Crypto prices"; priority=default; tags=chart_with_upwards_trend
+          fi
           curl -sS --fail-with-body \
-            -H "Title: Crypto signal update" \
-            -H "Priority: high" \
-            -H "Tags: chart_with_upwards_trend" \
+            -H "Title: $title" \
+            -H "Priority: $priority" \
+            -H "Tags: $tags" \
             -H "Click: $REPORT_URL" \
             --data-binary @NOTIFY.txt \
             "https://ntfy.sh/$NTFY_TOPIC"
