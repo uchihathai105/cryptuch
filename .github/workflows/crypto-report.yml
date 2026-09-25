@@ -1,0 +1,40 @@
+name: Crypto Report
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes (GitHub may delay scheduled runs under load)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: crypto-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build report
+        run: python3 report.py
+
+      - name: Show report in run summary
+        run: cat REPORT.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update report issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: Crypto Market Report
+        run: |
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
+          if [ -z "$number" ]; then
+            gh issue create --title "$TITLE" --body-file REPORT.md
+          else
+            gh issue edit "$number" --body-file REPORT.md
+          fi
