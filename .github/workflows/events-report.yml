@@ -1,0 +1,64 @@
+name: Crypto Events Report
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 08:00 Vietnam time (UTC+7); GitHub may start scheduled runs a few minutes late
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: events-report
+  cancel-in-progress: false
+
+env:
+  TITLE: Crypto Events Report
+
+jobs:
+  events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build events report
+        env:
+          REPORT_PATH: EVENTS.md
+          NOTIFY_PATH: EVENTS_NOTIFY.txt
+        run: python3 events.py
+
+      - name: Show report in run summary
+        run: cat EVENTS.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update events issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
+          if [ -z "$number" ]; then
+            url=$(gh issue create --title "$TITLE" --body-file EVENTS.md)
+          else
+            gh issue edit "$number" --body-file EVENTS.md
+            url="${{ github.server_url }}/${{ github.repository }}/issues/$number"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Send push notification
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          REPORT_URL: ${{ steps.issue.outputs.url }}
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then
+            echo "::warning::The NTFY_TOPIC secret is not set, so no push was sent."
+            exit 0
+          fi
+          curl -sS --fail-with-body \
+            -H "Title: Daily crypto events" \
+            -H "Tags: calendar" \
+            -H "Click: $REPORT_URL" \
+            --data-binary @EVENTS_NOTIFY.txt \
+            "https://ntfy.sh/$NTFY_TOPIC"
