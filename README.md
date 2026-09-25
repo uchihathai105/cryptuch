@@ -14,7 +14,7 @@ Each run:
 Every day at **08:00 Vietnam time**, `.github/workflows/events-report.yml` runs `events.py` and updates the issue **"Crypto Events Report"**, then sends a short ntfy push:
 
 - **Yesterday:** each coin's daily move (Binance daily candle: open, close, change, range, volume vs 7-day average) and crypto news headlines from that day (CoinDesk, Cointelegraph, Decrypt, The Block RSS), grouped into BTC, ETH, BNB and market-wide topics.
-- **Next 7 days:** scheduled high-impact US economic events (Forex Factory's public calendar: Fed, CPI, jobs, GDP…) shown in Vietnam time, plus recent headlines that mention upcoming BTC/ETH/BNB events (upgrades, unlocks, decisions, launches).
+- **Next 7 days:** scheduled high- and medium-impact US economic events (Forex Factory's public calendar: Fed, CPI, jobs, GDP…) shown in Vietnam time, plus recent headlines that mention upcoming BTC/ETH/BNB events (upgrades, unlocks, decisions, launches).
 
 It is free and rule-based (keyword matching, no AI), so headlines can be loosely related and it cannot judge whether an event is bullish or bearish.
 
