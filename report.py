@@ -11,6 +11,7 @@ Uses only the Python standard library.
 
 import json
 import os
+import re
 import statistics
 import sys
 import urllib.request
@@ -358,7 +359,33 @@ def render(results, now):
         "Crypto is highly volatile; indicators lag and are often wrong. "
         "Only risk money you can afford to lose.",
         "",
+        # Machine-readable signals, so the next run can detect changes.
+        f"<!-- signals: {json.dumps(signals_of(results))} -->",
+        "",
     ]
+    return "\n".join(lines)
+
+
+def signals_of(results):
+    return {coin: r["signal"] for coin, r in results.items() if "error" not in r}
+
+
+def previous_signals(report_text):
+    marker = re.search(r"<!-- signals: (\{.*?\}) -->", report_text or "")
+    return json.loads(marker.group(1)) if marker else {}
+
+
+def notification(results, previous, always=False):
+    """One line per coin whose signal changed (or every coin if always), or '' if nothing to send."""
+    lines = []
+    for coin, r in results.items():
+        if "error" in r:
+            continue
+        before = previous.get(coin)
+        changed = before is not None and before != r["signal"]
+        if always or changed:
+            label = f"{before} → {r['signal']}" if changed else r["signal"]
+            lines.append(f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})")
     return "\n".join(lines)
 
 
@@ -377,6 +404,19 @@ def main():
     with open(out, "w") as f:
         f.write(report)
     print(report)
+
+    # Write a push-notification message when a signal changed since the previous report.
+    notify_path = os.environ.get("NOTIFY_PATH")
+    if notify_path:
+        previous = {}
+        prev_path = os.environ.get("PREV_REPORT_PATH", "")
+        if prev_path and os.path.exists(prev_path):
+            with open(prev_path) as f:
+                previous = previous_signals(f.read())
+        message = notification(results, previous, always=os.environ.get("NOTIFY_ALWAYS") == "true")
+        with open(notify_path, "w") as f:
+            f.write(message)
+        print(f"\nNotification: {message or '(no signal change)'}")
     return 1 if all("error" in r for r in results.values()) else 0
 
 
