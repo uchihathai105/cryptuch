@@ -2,7 +2,8 @@ name: Crypto Report
 
 on:
   schedule:
-    - cron: "*/10 * * * *" # every 10 minutes (GitHub may delay scheduled runs under load)
+    # Every 10 minutes, offset from round minutes: GitHub often delays or drops scheduled runs at :00, :10, ...
+    - cron: "7-59/10 * * * *"
   workflow_dispatch:
     inputs:
       test_notification:

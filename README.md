@@ -27,7 +27,7 @@ It is free and rule-based (keyword matching, no AI), so headlines can be loosely
 
 ## Run it
 
-- Automatically: `.github/workflows/crypto-report.yml` runs on a `*/10 * * * *` schedule once it is on the default branch.
+- Automatically: `.github/workflows/crypto-report.yml` runs on a `7-59/10 * * * *` schedule (every 10 minutes at :07, :17, …) once it is on the default branch.
 - Manually: Actions → Crypto Report → Run workflow.
 - Locally: `python3 report.py` (Python 3, standard library only). The output goes to `REPORT.md`.
 
