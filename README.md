@@ -18,6 +18,16 @@ Every day at **08:00 Vietnam time**, `.github/workflows/events-report.yml` runs 
 
 It is free and rule-based (keyword matching, no AI), so headlines can be loosely related and it cannot judge whether an event is bullish or bearish.
 
+## Flows report
+
+`.github/workflows/flows-report.yml` runs `flows.py` every 15 minutes and keeps the issue **"Crypto Flows Report"** up to date:
+
+- **Exchange net flows** (Binance, OKX, Bitfinex, Bybit, Gate, Bitget, Gemini, HTX) from the wallets each exchange publishes, via DefiLlama. The previous UTC day's net flow is computed from changes in coin amounts × current price, so price moves are not counted as flows.
+- **Spot ETF flows** for BTC and ETH per fund, from Farside Investors' daily tables (fills in as funds report after each US trading day).
+- **Company treasuries** (Strategy, Metaplanet, BitMine…) from CoinGecko's public treasury list, with holdings changes.
+
+Pushes: an instant **"Crypto flow alert"** (once per event) when an exchange's net flow is ≥ $100M/day, BTC ETFs ≥ $200M/day, ETH ETFs ≥ $100M/day, or a company adds or sells ≥ 1,000 BTC / 10,000 ETH; and a **"Daily crypto flows"** summary on the first run after 08:00 Vietnam time. Free: public sources, no API keys, no AI.
+
 ## Phone notifications
 
 1. Install the free **ntfy** app ([iOS](https://apps.apple.com/app/ntfy/id1625396347), [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)). No account is needed.
