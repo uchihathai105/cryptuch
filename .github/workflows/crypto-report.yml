@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/10 * * * *" # every 10 minutes (GitHub may delay scheduled runs under load)
   workflow_dispatch:
+    inputs:
+      test_notification:
+        description: Send a push notification with the current signals even if nothing changed
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,6 +18,9 @@ concurrency:
   group: crypto-report
   cancel-in-progress: false
 
+env:
+  TITLE: Crypto Market Report
+
 jobs:
   report:
     runs-on: ubuntu-latest
@@ -20,7 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Load previous report
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          if [ -n "$number" ]; then
+            gh issue view "$number" --json body --jq .body > PREV_REPORT.md
+          fi
+
       - name: Build report
+        env:
+          PREV_REPORT_PATH: PREV_REPORT.md
+          NOTIFY_PATH: NOTIFY.txt
+          NOTIFY_ALWAYS: ${{ inputs.test_notification }}
         run: python3 report.py
 
       - name: Show report in run summary
@@ -29,12 +53,31 @@ jobs:
       - name: Update report issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TITLE: Crypto Market Report
+          NUMBER: ${{ steps.issue.outputs.number }}
         run: |
-          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
-            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
-          if [ -z "$number" ]; then
+          if [ -z "$NUMBER" ]; then
             gh issue create --title "$TITLE" --body-file REPORT.md
           else
-            gh issue edit "$number" --body-file REPORT.md
+            gh issue edit "$NUMBER" --body-file REPORT.md
           fi
+
+      - name: Send push notification
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.number }}
+        run: |
+          if [ ! -s NOTIFY.txt ]; then
+            echo "No signal change; nothing to send."
+            exit 0
+          fi
+          if [ -z "$NTFY_TOPIC" ]; then
+            echo "::warning::A signal changed but the NTFY_TOPIC secret is not set, so no push was sent."
+            exit 0
+          fi
+          curl -sS --fail-with-body \
+            -H "Title: Crypto signal update" \
+            -H "Priority: high" \
+            -H "Tags: chart_with_upwards_trend" \
+            -H "Click: $REPORT_URL" \
+            --data-binary @NOTIFY.txt \
+            "https://ntfy.sh/$NTFY_TOPIC"
