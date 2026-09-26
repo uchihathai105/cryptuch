@@ -1,10 +1,8 @@
 name: Crypto Events Report
 
 on:
-  schedule:
-    # 07:57 Vietnam time (UTC+7) so it usually lands around 08:00; round times like 01:00 UTC are
-    # GitHub's busiest slots and scheduled runs there are often delayed or dropped.
-    - cron: "57 0 * * *"
+  # Started by cron-job.org through the workflow_dispatch API (GitHub's own schedule was
+  # throttled to about one run every 4-5 hours). See README "Scheduling".
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Daily events report for BTC, ETH and BNB.
+"""Daily events report for BTC, ETH, BNB, XRP, SOL, SUI, NEAR and ZEC.
 
 - Yesterday: each coin's daily move (Binance daily candle, UTC day) plus crypto
   news headlines from that day, grouped by coin and market-wide topics.
@@ -39,6 +39,11 @@ TOPICS = {
     "BTC": ["bitcoin", "btc"],
     "ETH": ["ethereum", "ether", "eth"],
     "BNB": ["bnb", "bnb chain", "bnbchain"],
+    "XRP": ["xrp", "ripple", "xrp ledger", "xrpl"],
+    "SOL": ["solana", "sol"],
+    "SUI": ["sui"],
+    "NEAR": ["near protocol", "near foundation", "near intents"],
+    "ZEC": ["zcash", "zec"],
     "Market-wide": [
         "fed", "fomc", "powell", "interest rate", "rate cut", "rate hike", "inflation", "cpi",
         "jobs report", "payrolls", "sec", "etf", "etfs", "regulation", "regulator", "stablecoin",
@@ -46,6 +51,9 @@ TOPICS = {
         "bond yields", "crypto market", "liquidation", "liquidations",
     ],
 }
+# Coin tickers that are also everyday words ("Bitcoin near $84K") only count in capitals.
+CASE_SENSITIVE_TOPICS = {"NEAR": ["NEAR"]}
+COINS = [name for name in TOPICS if name != "Market-wide"]
 # "Binance" alone is often just a former employee or a partner, so it only counts for BNB
 # when the headline is about the exchange itself.
 BINANCE_EXCHANGE_WORDS = [
@@ -77,6 +85,8 @@ def matches(text, words):
 
 def in_topic(name, title):
     if matches(title, TOPICS[name]):
+        return True
+    if any(re.search(rf"(?<![\w-]){re.escape(w)}(?![\w-])", title) for w in CASE_SENSITIVE_TOPICS.get(name, [])):
         return True
     return name == "BNB" and matches(title, ["binance"]) and matches(title, BINANCE_EXCHANGE_WORDS)
 
@@ -157,7 +167,7 @@ def group_headlines(items, start, end):
 def upcoming_headlines(items, since):
     picked = []
     for it in items:
-        about_coin = any(in_topic(name, it["title"]) for name in ("BTC", "ETH", "BNB"))
+        about_coin = any(in_topic(name, it["title"]) for name in COINS)
         if it["time"] >= since and matches(it["title"], UPCOMING_WORDS) and about_coin:
             picked.append(it)
             if len(picked) >= MAX_UPCOMING:
@@ -239,14 +249,14 @@ def render(now, day_start, moves, groups, events, reach, upcoming, failed):
         lines.append(f"\n_The calendar feed only reaches {vn(reach, '%a %d %b')}; later events are not published yet._")
     lines += [
         "",
-        "High-impact releases (Fed decisions and speeches, inflation, jobs, GDP) often move BTC, ETH and BNB "
+        "High-impact releases (Fed decisions and speeches, inflation, jobs, GDP) often move crypto prices "
         "because they change expectations for interest rates and risk appetite; medium-impact ones usually "
         "matter less unless they surprise.",
         "",
         "### Crypto items mentioned in recent news (last 3 days)",
         "",
     ]
-    lines += [headline_line(it) for it in upcoming] or ["_No headlines mentioning upcoming BTC, ETH or BNB events._"]
+    lines += [headline_line(it) for it in upcoming] or ["_No headlines mentioning upcoming events for these coins._"]
 
     if failed:
         lines += ["", f"_Unavailable this run: {', '.join(failed)}._"]
