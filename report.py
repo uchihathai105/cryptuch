@@ -22,6 +22,7 @@ SYMBOLS = {
     "SOL": "SOLUSDT", "SUI": "SUIUSDT", "NEAR": "NEARUSDT", "ZEC": "ZECUSDT",
 }
 KLINE_LIMIT = 300  # hourly candles: enough for MA99, MACD warm-up and 8 days of volume
+SHORT_INTERVAL, SHORT_LIMIT = "15m", 120  # short-term view (not scored): 30 hours of 15-minute candles
 
 # api.binance.com refuses requests from US IPs (where GitHub runners live);
 # data-api.binance.vision serves the same public market data without that block.
@@ -264,6 +265,46 @@ def analyze(ticker, klines):
     }
 
 
+def short_term(klines):
+    """15-minute snapshot for timing: RSI, MACD momentum and price vs MA20 (~5 hours). Not scored."""
+    closes = [float(k[4]) for k in klines]
+    price = closes[-1]
+    rsi14 = rsi(closes)
+    ma20 = sma(closes, 20)
+    _, _, hist = macd(closes)
+    cross = None
+    for prev, cur in zip(hist[-4:-1], hist[-3:]):
+        if prev <= 0 < cur:
+            cross = "up"
+        elif prev >= 0 > cur:
+            cross = "down"
+    if price > ma20 and hist[-1] > 0:
+        bias = "bullish"
+    elif price < ma20 and hist[-1] < 0:
+        bias = "bearish"
+    else:
+        bias = "mixed"
+    notes = []
+    if cross:
+        notes.append(f"MACD just crossed {cross}")
+    elif hist[-1] > 0:
+        notes.append("MACD rising" if hist[-1] > hist[-2] else "MACD up but fading")
+    else:
+        notes.append("MACD falling" if hist[-1] < hist[-2] else "MACD down but easing")
+    if rsi14 >= 70:
+        notes.append("overbought")
+    elif rsi14 <= 30:
+        notes.append("oversold")
+    change_1h = (price / closes[-5] - 1) * 100 if len(closes) >= 5 else None
+    return {"rsi": rsi14, "ma20": ma20, "bias": bias, "cross": cross, "notes": notes, "change_1h": change_1h,
+            "above_ma": price > ma20}
+
+
+def short_label(st):
+    icon = {"bullish": "🟢", "bearish": "🔴", "mixed": "⚪"}[st["bias"]]
+    return f"{icon} {st['bias']} · RSI {st['rsi']:.0f} · {', '.join(st['notes'])}"
+
+
 # --- rendering ---------------------------------------------------------------
 
 
@@ -336,13 +377,33 @@ def render(results, now):
             f"| {fmt_ind(m)} / {fmt_ind(s)} / {fmt_ind(h)}{cross} | {r['rsi']:.0f} |"
         )
 
+    lines += [
+        "",
+        "## Short-term view (15m candles, for timing only, not part of the signal)",
+        "",
+        "| Coin | Last 1h | RSI(14) | vs MA20 (~5h) | MACD | Read |",
+        "|---|---:|---:|---|---|---|",
+    ]
+    for coin, r in results.items():
+        st = r.get("short")
+        if "error" in r or not st:
+            continue
+        lines.append(
+            f"| **{coin}** | {fmt_pct(st['change_1h'])} | {st['rsi']:.0f} "
+            f"| {'above' if st['above_ma'] else 'below'} {fmt_price(st['ma20'])} | {st['notes'][0]} "
+            f"| {short_label(st).split(' · ')[0]} |"
+        )
+    lines += ["", "🟢 bullish = price above MA20 and MACD histogram positive; 🔴 bearish = both negative; "
+              "⚪ mixed otherwise. Short-term readings flip often; use them to time entries around the 1h signal."]
+
     lines += ["", "## Analysis", ""]
     for coin, r in results.items():
         if "error" in r:
             continue
         lines += [
             f"### {coin}: {icon[r['signal']]} (score {r['score']:+d})",
-            f"24h range {fmt_price(r['low_24h'])} – {fmt_price(r['high_24h'])}.",
+            f"24h range {fmt_price(r['low_24h'])} – {fmt_price(r['high_24h'])}."
+            + (f" Short-term (15m): {short_label(r['short'])}." if r.get("short") else ""),
             "",
             "| Factor | Points | Reading |",
             "|---|---|---|",
@@ -394,7 +455,11 @@ def notification(results, previous, always=False):
         changed = before is not None and before != r["signal"]
         if always or changed:
             label = f"{before} → {r['signal']}" if changed else r["signal"]
-            lines.append(f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})")
+            line = f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})"
+            if r.get("short"):
+                st = r["short"]
+                line += f" · 15m {st['bias']} RSI {st['rsi']:.0f}"
+            lines.append(line)
     return "\n".join(lines)
 
 
@@ -407,6 +472,12 @@ def main():
             results[coin] = analyze(ticker, klines)
         except Exception as e:
             results[coin] = {"error": str(e)}
+            continue
+        try:
+            short = fetch_json(f"/klines?symbol={symbol}&interval={SHORT_INTERVAL}&limit={SHORT_LIMIT}")
+            results[coin]["short"] = short_term(short)
+        except Exception as e:  # the 1h report still works without the short-term view
+            print(f"::warning::{coin} 15m data unavailable: {e}")
 
     report = render(results, datetime.now(timezone.utc))
     out = os.environ.get("REPORT_PATH", "REPORT.md")
