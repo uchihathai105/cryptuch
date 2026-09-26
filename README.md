@@ -1,6 +1,6 @@
 # cryptuch
 
-Automated market report for **BTC, ETH and BNB**, refreshed every 10 minutes by GitHub Actions.
+Automated market reports for **BTC, ETH, BNB, XRP, SOL, SUI, NEAR and ZEC**, run by GitHub Actions and started on schedule by cron-job.org.
 
 Each run:
 1. Pulls the 24h ticker and 300 hourly candles for each coin from Binance's public market-data API (no API key needed).
@@ -13,8 +13,8 @@ Each run:
 
 Every day at **08:00 Vietnam time**, `.github/workflows/events-report.yml` runs `events.py` and updates the issue **"Crypto Events Report"**, then sends a short ntfy push:
 
-- **Yesterday:** each coin's daily move (Binance daily candle: open, close, change, range, volume vs 7-day average) and crypto news headlines from that day (CoinDesk, Cointelegraph, Decrypt, The Block RSS), grouped into BTC, ETH, BNB and market-wide topics.
-- **Next 7 days:** scheduled high- and medium-impact US economic events (Forex Factory's public calendar: Fed, CPI, jobs, GDP…) shown in Vietnam time, plus recent headlines that mention upcoming BTC/ETH/BNB events (upgrades, unlocks, decisions, launches).
+- **Yesterday:** each coin's daily move (Binance daily candle: open, close, change, range, volume vs 7-day average) and crypto news headlines from that day (CoinDesk, Cointelegraph, Decrypt, The Block RSS), grouped by coin (BTC, ETH, BNB, XRP, SOL, SUI, NEAR, ZEC) and market-wide topics.
+- **Next 7 days:** scheduled high- and medium-impact US economic events (Forex Factory's public calendar: Fed, CPI, jobs, GDP…) shown in Vietnam time, plus recent headlines that mention upcoming events for these coins (upgrades, unlocks, decisions, launches).
 
 It is free and rule-based (keyword matching, no AI), so headlines can be loosely related and it cannot judge whether an event is bullish or bearish.
 
@@ -35,10 +35,22 @@ Pushes: an instant **"Crypto flow alert"** (once per event) when an exchange's n
 3. Add it as a repository secret: Settings → Secrets and variables → Actions → New repository secret, name `NTFY_TOPIC`.
 4. Test it: Actions → Crypto Report → Run workflow.
 
+## Scheduling
+
+GitHub's own `schedule:` trigger ran these workflows only about once every 4–5 hours, so the workflows have no `schedule:` and are started by three free [cron-job.org](https://cron-job.org) jobs (time zone Asia/Ho_Chi_Minh) that call the GitHub API:
+
+| Workflow | cron-job.org schedule |
+|---|---|
+| `crypto-report.yml` (price report) | every 10 minutes |
+| `flows-report.yml` (flows report) | every 15 minutes |
+| `events-report.yml` (events report) | daily at 08:00 |
+
+Each job sends `POST https://api.github.com/repos/uchihathai105/cryptuch/actions/workflows/<file>/dispatches` with body `{"ref":"main"}` and headers `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Content-Type: application/json` and `Authorization: Bearer <token>`. The token is a fine-grained personal access token limited to this repository with **Actions: Read and write**. If the reports stop, check that the token has not been revoked and that the jobs are still enabled on cron-job.org.
+
 ## Run it
 
-- Automatically: `.github/workflows/crypto-report.yml` runs on a `7-59/10 * * * *` schedule (every 10 minutes at :07, :17, …) once it is on the default branch.
-- Manually: Actions → Crypto Report → Run workflow.
+- Automatically: see Scheduling above.
+- Manually: Actions → pick a report → Run workflow.
 - Locally: `python3 report.py` (Python 3, standard library only). The output goes to `REPORT.md`.
 
 > ⚠️ The signals are simple technical indicators, not financial advice.

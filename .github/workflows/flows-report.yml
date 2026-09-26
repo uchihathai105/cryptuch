@@ -1,10 +1,8 @@
 name: Crypto Flows Report
 
 on:
-  schedule:
-    # Every 15 minutes, offset from round minutes (GitHub often delays or drops runs at :00, :15, ...).
-    # The daily summary goes out on the first run after 08:00 Vietnam time.
-    - cron: "4-59/15 * * * *"
+  # Started by cron-job.org through the workflow_dispatch API (GitHub's own schedule was
+  # throttled to about one run every 4-5 hours). See README "Scheduling".
   workflow_dispatch:
     inputs:
       force_daily:

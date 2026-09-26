@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crypto market report for BTC, BNB and ETH.
+"""Crypto market report for BTC, ETH, BNB, XRP, SOL, SUI, NEAR and ZEC.
 
 Fetches market data from Binance's public market-data API, computes trend
 (MA), volatility (Bollinger Bands) and momentum (MACD, RSI) indicators, and
@@ -17,7 +17,10 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
-SYMBOLS = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "BNB": "BNBUSDT"}
+SYMBOLS = {
+    "BTC": "BTCUSDT", "ETH": "ETHUSDT", "BNB": "BNBUSDT", "XRP": "XRPUSDT",
+    "SOL": "SOLUSDT", "SUI": "SUIUSDT", "NEAR": "NEARUSDT", "ZEC": "ZECUSDT",
+}
 KLINE_LIMIT = 300  # hourly candles: enough for MA99, MACD warm-up and 8 days of volume
 
 # api.binance.com refuses requests from US IPs (where GitHub runners live);
@@ -177,7 +180,7 @@ def analyze(ticker, klines):
         pts, text = 0, "MACD is above its signal line but the histogram is shrinking: upward momentum is fading."
     else:
         pts, text = 0, "MACD is below its signal line but the histogram is shrinking: selling pressure is easing."
-    text += f" (MACD {m:+,.2f}, signal {s:+,.2f}, histogram {h:+,.2f})"
+    text += f" (MACD {fmt_ind(m)}, signal {fmt_ind(s)}, histogram {fmt_ind(h)})"
     analysis.append(("MACD", pts, text))
 
     # 4. Bollinger Bands (mean reversion at the extremes).
@@ -265,7 +268,13 @@ def analyze(ticker, klines):
 
 
 def fmt_price(p):
-    return f"${p:,.2f}"
+    # Cheaper coins (XRP, SUI, ...) need more decimals for MA / Bollinger levels to mean anything.
+    return f"${p:,.2f}" if abs(p) >= 100 else f"${p:,.4f}"
+
+
+def fmt_ind(x):
+    """MACD values: large for BTC, tiny for XRP."""
+    return f"{x:+,.2f}" if abs(x) >= 1 else f"{x:+.5f}"
 
 
 def fmt_pct(p):
@@ -324,7 +333,7 @@ def render(results, now):
         lines.append(
             f"| **{coin}** | {fmt_price(r['ma7'])} | {fmt_price(r['ma25'])} | {fmt_price(r['ma99'])} "
             f"| {fmt_price(lo)} / {fmt_price(mid)} / {fmt_price(up)}{squeeze} | {r['pct_b']:.2f} "
-            f"| {m:+,.2f} / {s:+,.2f} / {h:+,.2f}{cross} | {r['rsi']:.0f} |"
+            f"| {fmt_ind(m)} / {fmt_ind(s)} / {fmt_ind(h)}{cross} | {r['rsi']:.0f} |"
         )
 
     lines += ["", "## Analysis", ""]
