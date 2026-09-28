@@ -33,6 +33,8 @@ Pushes: an instant **"Crypto flow alert"** (once per event) when an exchange's n
 
 ## Phone notifications
 
+**Quiet hours:** the price and flows reports send no pushes from **02:00 to 06:00 Vietnam time**. The report issues still update; flow alerts found in that window stay listed under "Recent alerts".
+
 1. Install the free **ntfy** app ([iOS](https://apps.apple.com/app/ntfy/id1625396347), [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)). No account is needed.
 2. Pick a hard-to-guess topic name (anyone who knows it can read your notifications) and subscribe to it in the app.
 3. Add it as a repository secret: Settings → Secrets and variables → Actions → New repository secret, name `NTFY_TOPIC`.

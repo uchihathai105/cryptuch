@@ -69,6 +69,12 @@ jobs:
             echo "::warning::The NTFY_TOPIC secret is not set, so no push was sent."
             exit 0
           fi
+          # Quiet hours: no pushes from 02:00 to 05:59 Vietnam time (the report issue still updates).
+          hour=$(TZ=Asia/Ho_Chi_Minh date +%-H)
+          if [ "$hour" -ge 2 ] && [ "$hour" -lt 6 ]; then
+            echo "Quiet hours (02:00-06:00 Vietnam time); not sending."
+            exit 0
+          fi
           # A changed signal gets a louder, distinct push; routine updates use normal priority.
           # New intraday scalp setups (lines starting with ⚡) and changed signals (→) are high priority.
           if grep -q "^⚡" NOTIFY.txt && grep -q "→" NOTIFY.txt; then
