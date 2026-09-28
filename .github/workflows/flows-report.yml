@@ -72,6 +72,13 @@ jobs:
             echo "::warning::The NTFY_TOPIC secret is not set, so no push was sent."
             exit 0
           fi
+          # Quiet hours: no pushes from 02:00 to 05:59 Vietnam time. Alerts found then stay listed
+          # under "Recent alerts" in the report issue.
+          hour=$(TZ=Asia/Ho_Chi_Minh date +%-H)
+          if [ "$hour" -ge 2 ] && [ "$hour" -lt 6 ]; then
+            echo "Quiet hours (02:00-06:00 Vietnam time); not sending."
+            exit 0
+          fi
           push() { # title priority tags file
             curl -sS --fail-with-body -H "Title: $1" -H "Priority: $2" -H "Tags: $3" \
               -H "Click: $REPORT_URL" --data-binary @"$4" "https://ntfy.sh/$NTFY_TOPIC"
