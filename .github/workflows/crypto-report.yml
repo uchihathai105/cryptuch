@@ -70,7 +70,12 @@ jobs:
             exit 0
           fi
           # A changed signal gets a louder, distinct push; routine updates use normal priority.
-          if grep -q "→" NOTIFY.txt; then
+          # New intraday scalp setups (lines starting with ⚡) and changed signals (→) are high priority.
+          if grep -q "^⚡" NOTIFY.txt && grep -q "→" NOTIFY.txt; then
+            title="Scalp setup + signal CHANGED"; priority=high; tags=zap
+          elif grep -q "^⚡" NOTIFY.txt; then
+            title="Scalp setup"; priority=high; tags=zap
+          elif grep -q "→" NOTIFY.txt; then
             title="Crypto signal CHANGED"; priority=high; tags=rotating_light
           else
             title="Crypto prices"; priority=default; tags=chart_with_upwards_trend

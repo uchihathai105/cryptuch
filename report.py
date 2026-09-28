@@ -15,7 +15,7 @@ import re
 import statistics
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 SYMBOLS = {
     "BTC": "BTCUSDT", "ETH": "ETHUSDT", "BNB": "BNBUSDT", "XRP": "XRPUSDT",
@@ -296,8 +296,122 @@ def short_term(klines):
     elif rsi14 <= 30:
         notes.append("oversold")
     change_1h = (price / closes[-5] - 1) * 100 if len(closes) >= 5 else None
+    lows = [float(k[3]) for k in klines]
+    # Pullback-and-bounce: one of the last two candles dipped to MA20 and price is back above it, rising.
+    bounce = min(lows[-2:]) <= ma20 * 1.002 and price > ma20 and price > closes[-2]
     return {"rsi": rsi14, "ma20": ma20, "bias": bias, "cross": cross, "notes": notes, "change_1h": change_1h,
-            "above_ma": price > ma20}
+            "above_ma": price > ma20, "price": price, "swing_low": min(lows[-8:]), "bounce": bounce}
+
+
+def entry_plan(r):
+    """Split a 1h BUY/SELL into 'act now' vs 'wait', with a zone, stop and targets.
+
+    BUY is 'wait for a pullback' when price is stretched (near the upper band, RSI > 65),
+    volume is light or the 15m momentum is turning down; SELL mirrors that. Levels come from
+    MA7 / Bollinger middle (pullback zone), MA25 / Bollinger middle (stop) and 1.5R / 3R targets.
+    """
+    signal, price = r["signal"], r["price"]
+    lo, mid, up = r["boll"]
+    st = r.get("short") or {}
+    if signal == "HOLD":
+        return {"label": "HOLD", "reasons": []}
+    reasons = []
+    if signal == "BUY":
+        if r["pct_b"] > 0.85:
+            reasons.append(f"price near the upper band (%B {r['pct_b']:.2f})")
+        if r["rsi"] > 65:
+            reasons.append(f"RSI {r['rsi']:.0f} is hot")
+        if st.get("bias") == "bearish" or st.get("cross") == "down":
+            reasons.append("15m momentum turning down")
+        if r["vol_ratio"] < 0.8:
+            reasons.append(f"light volume ({r['vol_ratio']:.2f}x)")
+        zone = sorted(v for v in (r["ma7"], mid) if v < price) or [price]
+        entry = price if not reasons else sum(zone) / len(zone)
+        stop = min(r["ma25"], mid, zone[0]) * 0.995
+        risk = entry - stop
+        targets = (entry + 1.5 * risk, entry + 3 * risk) if risk > 0 else None
+        label = "BUY-WAIT" if reasons else "BUY"
+    else:
+        if r["pct_b"] < 0.15:
+            reasons.append(f"price near the lower band (%B {r['pct_b']:.2f})")
+        if r["rsi"] < 35:
+            reasons.append(f"RSI {r['rsi']:.0f} is oversold")
+        if st.get("bias") == "bullish" or st.get("cross") == "up":
+            reasons.append("15m momentum turning up")
+        if r["vol_ratio"] < 0.8:
+            reasons.append(f"light volume ({r['vol_ratio']:.2f}x)")
+        zone = sorted(v for v in (r["ma7"], mid) if v > price) or [price]
+        entry = price if not reasons else sum(zone) / len(zone)
+        stop = max(r["ma25"], mid, zone[-1]) * 1.005  # a reclaim above this cancels the SELL
+        risk = stop - entry
+        targets = (entry - 1.5 * risk, entry - 3 * risk) if risk > 0 else None
+        label = "SELL-WAIT" if reasons else "SELL"
+    return {"label": label, "reasons": reasons, "zone": (zone[0], zone[-1]), "entry": entry,
+            "stop": stop, "targets": targets}
+
+
+PLAN_ICON = {
+    "BUY": "🟢 BUY", "BUY-WAIT": "🟡 BUY · wait for pullback", "HOLD": "⚪ HOLD",
+    "SELL": "🔴 SELL", "SELL-WAIT": "🟠 SELL · wait for bounce",
+}
+
+
+def plan_text(p):
+    if p["label"] == "HOLD" or not p.get("targets"):
+        return ""
+    t1, t2 = p["targets"]
+    z0, z1 = p["zone"]
+    zone = fmt_price(z0) if abs(z1 - z0) < 1e-9 else f"{fmt_price(z0)}–{fmt_price(z1)}"
+    if p["label"] == "BUY":
+        return f"Buy now ~{fmt_price(p['entry'])} · stop {fmt_price(p['stop'])} · targets {fmt_price(t1)} / {fmt_price(t2)}"
+    if p["label"] == "BUY-WAIT":
+        return (f"Wait for a pullback to {zone} ({'; '.join(p['reasons'])}) · stop {fmt_price(p['stop'])} "
+                f"· targets {fmt_price(t1)} / {fmt_price(t2)}")
+    if p["label"] == "SELL":
+        return f"Sell / exit now ~{fmt_price(p['entry'])} · invalid above {fmt_price(p['stop'])} · downside {fmt_price(t1)} / {fmt_price(t2)}"
+    return (f"Exit on a bounce to {zone} ({'; '.join(p['reasons'])}) · invalid above {fmt_price(p['stop'])} "
+            f"· downside {fmt_price(t1)} / {fmt_price(t2)}")
+
+
+SCALP_MAX_RISK_PCT = 2.5
+
+
+def scalp_setup(r):
+    """Intraday long setup on 15m candles, only with the 1h trend (spot: long only).
+
+    LONG when the 1h trend is not down (price above 1h MA25, signal not SELL), 15m is bullish,
+    RSI 40-68, and there is a trigger: a fresh 15m MACD cross up or a bounce off the 15m MA20.
+    Stop just under the last 2 hours' low; targets 1R and 2R, capped by the 1h upper band.
+    """
+    st = r.get("short")
+    if not st:
+        return {"state": "n/a", "why": "no 15m data"}
+    trend_ok = r["price"] > r["ma25"] and r["signal"] != "SELL"
+    if not trend_ok:
+        return {"state": "AVOID", "why": "1h trend not up"}
+    if st["bias"] != "bullish":
+        return {"state": "WAIT", "why": f"15m {st['bias']}"}
+    if not 40 <= st["rsi"] <= 68:
+        return {"state": "WAIT", "why": f"15m RSI {st['rsi']:.0f} {'too hot' if st['rsi'] > 68 else 'too weak'}"}
+    trigger = "MACD cross up" if st["cross"] == "up" else "bounce off MA20" if st["bounce"] else None
+    if not trigger:
+        return {"state": "WAIT", "why": "no 15m trigger yet (MACD cross up or MA20 bounce)"}
+    entry = st["price"]
+    stop = st["swing_low"] * 0.998
+    risk = entry - stop
+    if risk <= 0 or risk / entry * 100 > SCALP_MAX_RISK_PCT:
+        return {"state": "WAIT", "why": f"stop too far (> {SCALP_MAX_RISK_PCT}%)"}
+    t1, t2 = entry + risk, entry + 2 * risk
+    up = r["boll"][2]
+    if up > entry:
+        t2 = min(t2, up)
+    return {"state": "LONG", "why": trigger, "entry": entry, "stop": stop, "t1": t1, "t2": max(t1, t2),
+            "risk_pct": risk / entry * 100}
+
+
+def scalp_text(coin, s):
+    return (f"⚡ {coin} scalp LONG {fmt_price(s['entry'])} · SL {fmt_price(s['stop'])} (−{s['risk_pct']:.1f}%) "
+            f"· TP {fmt_price(s['t1'])} / {fmt_price(s['t2'])} · {s['why']}")
 
 
 def short_label(st):
@@ -354,8 +468,31 @@ def render(results, now):
             continue
         lines.append(
             f"| **{coin}** | {fmt_price(r['price'])} | {fmt_pct(r['change_24h'])} | {fmt_pct(r['change_7d'])} "
-            f"| {fmt_vol(r['vol_24h'])} | {r['vol_ratio']:.2f}x | {trend_label(r)} | {r['score']:+d} | {icon[r['signal']]} |"
+            f"| {fmt_vol(r['vol_24h'])} | {r['vol_ratio']:.2f}x | {trend_label(r)} | {r['score']:+d} "
+            f"| {PLAN_ICON[r['plan']['label']] if r.get('plan') else icon[r['signal']]} |"
         )
+
+    lines += [
+        "",
+        "## ⚡ Intraday scalping (15m candles, long only, with the 1h trend)",
+        "",
+        "| Coin | Setup | Entry | Stop | Target 1 / 2 | Why |",
+        "|---|---|---:|---:|---:|---|",
+    ]
+    for coin, r in results.items():
+        s = r.get("scalp")
+        if "error" in r or not s:
+            continue
+        if s["state"] == "LONG":
+            lines.append(f"| **{coin}** | ⚡ **LONG** | {fmt_price(s['entry'])} | {fmt_price(s['stop'])} "
+                         f"(−{s['risk_pct']:.1f}%) | {fmt_price(s['t1'])} / {fmt_price(s['t2'])} | {s['why']} |")
+        else:
+            icon_s = "⛔ avoid" if s["state"] == "AVOID" else "⏳ wait"
+            lines.append(f"| **{coin}** | {icon_s} | | | | {s['why']} |")
+    lines += ["", "LONG needs: 1h price above MA25 and 1h signal not SELL; 15m bullish with RSI 40–68; and a "
+              "trigger (fresh 15m MACD cross up, or a bounce off the 15m MA20). Stop sits just under the last "
+              f"2 hours' low (skipped if wider than {SCALP_MAX_RISK_PCT}%); targets are 1R and 2R, capped at the "
+              "1h upper Bollinger band. Scalps are fast: take profit at the targets, always use the stop."]
 
     lines += [
         "",
@@ -400,10 +537,12 @@ def render(results, now):
     for coin, r in results.items():
         if "error" in r:
             continue
+        plan = plan_text(r["plan"]) if r.get("plan") else ""
         lines += [
-            f"### {coin}: {icon[r['signal']]} (score {r['score']:+d})",
+            f"### {coin}: {PLAN_ICON[r['plan']['label']] if r.get('plan') else icon[r['signal']]} (score {r['score']:+d})",
             f"24h range {fmt_price(r['low_24h'])} – {fmt_price(r['high_24h'])}."
             + (f" Short-term (15m): {short_label(r['short'])}." if r.get("short") else ""),
+            *([f"", f"**Trade plan:** {plan}"] if plan else []),
             "",
             "| Factor | Points | Reading |",
             "|---|---|---|",
@@ -425,15 +564,30 @@ def render(results, now):
         "",
         f"Score {BUY_THRESHOLD:+d} or more → BUY, {SELL_THRESHOLD:+d} or less → SELL, otherwise HOLD.",
         "",
+        "**Act now or wait?** A BUY becomes **🟡 BUY · wait for pullback** when price is stretched "
+        "(%B > 0.85 or RSI > 65), volume is light (< 0.8x) or 15m momentum is turning down; the plan then "
+        "names the pullback zone (MA7 / Bollinger middle). SELL mirrors this (**🟠 wait for bounce**). "
+        "Stops sit below MA25 / Bollinger middle (above for SELL); targets are 1.5R and 3R.",
+        "",
         "> ⚠️ This is an automated technical-indicator summary, not financial advice. "
         "Crypto is highly volatile; indicators lag and are often wrong. "
         "Only risk money you can afford to lose.",
         "",
         # Machine-readable signals, so the next run can detect changes.
         f"<!-- signals: {json.dumps(signals_of(results))} -->",
+        f"<!-- scalps: {json.dumps(scalps_of(results))} -->",
         "",
     ]
     return "\n".join(lines)
+
+
+def scalps_of(results):
+    return sorted(c for c, r in results.items() if r.get("scalp", {}).get("state") == "LONG")
+
+
+def previous_scalps(report_text):
+    marker = re.search(r"<!-- scalps: (\[.*?\]) -->", report_text or "")
+    return set(json.loads(marker.group(1))) if marker else set()
 
 
 def signals_of(results):
@@ -445,22 +599,31 @@ def previous_signals(report_text):
     return json.loads(marker.group(1)) if marker else {}
 
 
-def notification(results, previous, always=False):
-    """One line per coin whose signal changed (or every coin if always), or '' if nothing to send."""
+def notification(results, previous, always=False, previous_scalp=frozenset()):
+    """New scalp setups first (lines start with ⚡), then one line per coin whose signal changed
+    (or every coin if always). '' if nothing to send."""
+    new_scalps = [scalp_text(c, r["scalp"]) for c, r in results.items()
+                  if r.get("scalp", {}).get("state") == "LONG" and c not in previous_scalp]
     lines = []
     for coin, r in results.items():
         if "error" in r:
             continue
         before = previous.get(coin)
         changed = before is not None and before != r["signal"]
-        if always or changed:
-            label = f"{before} → {r['signal']}" if changed else r["signal"]
+        # Routine summaries only list coins with something to act on: a BUY/SELL signal
+        # (including the wait-for-pullback/bounce variants) or an active scalp setup.
+        actionable = r["signal"] != "HOLD" or r.get("scalp", {}).get("state") == "LONG"
+        if (always and actionable) or changed:
+            shown = r["plan"]["label"] if r.get("plan") else r["signal"]
+            label = f"{before} → {shown}" if changed else shown
             line = f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})"
             if r.get("short"):
                 st = r["short"]
                 line += f" · 15m {st['bias']} RSI {st['rsi']:.0f}"
+            if r.get("scalp", {}).get("state") == "LONG":
+                line += " · scalp LONG"
             lines.append(line)
-    return "\n".join(lines)
+    return "\n".join(new_scalps + ([""] if new_scalps and lines else []) + lines)
 
 
 def main():
@@ -478,8 +641,23 @@ def main():
             results[coin]["short"] = short_term(short)
         except Exception as e:  # the 1h report still works without the short-term view
             print(f"::warning::{coin} 15m data unavailable: {e}")
+        results[coin]["plan"] = entry_plan(results[coin])
+        results[coin]["scalp"] = scalp_setup(results[coin])
 
-    report = render(results, datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    report = render(results, now)
+    prev_text = ""
+    prev_path = os.environ.get("PREV_REPORT_PATH", "")
+    if prev_path and os.path.exists(prev_path):
+        with open(prev_path) as f:
+            prev_text = f.read()
+    # The report may run every couple of minutes; the routine all-coins push keeps its own pace
+    # (SUMMARY_MINUTES, default 10) so ntfy's free daily limit isn't hit. Alerts are never delayed.
+    last = re.search(r"<!-- last-summary: (\S+) -->", prev_text)
+    last_at = datetime.fromisoformat(last.group(1)) if last else None
+    every = timedelta(minutes=float(os.environ.get("SUMMARY_MINUTES", "10")))
+    summary_due = last_at is None or now - last_at >= every - timedelta(seconds=45)
+    report += f"<!-- last-summary: {(now if summary_due else last_at).isoformat(timespec='seconds')} -->\n"
     out = os.environ.get("REPORT_PATH", "REPORT.md")
     with open(out, "w") as f:
         f.write(report)
@@ -488,12 +666,9 @@ def main():
     # Write a push-notification message when a signal changed since the previous report.
     notify_path = os.environ.get("NOTIFY_PATH")
     if notify_path:
-        previous = {}
-        prev_path = os.environ.get("PREV_REPORT_PATH", "")
-        if prev_path and os.path.exists(prev_path):
-            with open(prev_path) as f:
-                previous = previous_signals(f.read())
-        message = notification(results, previous, always=os.environ.get("NOTIFY_ALWAYS") == "true")
+        previous, previous_scalp = previous_signals(prev_text), previous_scalps(prev_text)
+        always = os.environ.get("NOTIFY_ALWAYS") == "true" and summary_due
+        message = notification(results, previous, always=always, previous_scalp=previous_scalp)
         with open(notify_path, "w") as f:
             f.write(message)
         print(f"\nNotification: {message or '(no signal change)'}")

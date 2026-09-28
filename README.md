@@ -7,8 +7,10 @@ Each run:
 2. Computes price, 24h / 7d change, 24h volume vs. its 7-day average, MA7 / MA25 / MA99, Bollinger Bands (20, 2), MACD (12, 26, 9) and RSI(14).
 3. Scores six factors per coin, gives a **BUY / SELL / HOLD** signal, and explains the reasoning factor by factor (see "How the signal works" in the report).
    A **short-term view on 15-minute candles** (last-hour change, RSI, price vs MA20 ≈ 5 hours, MACD momentum → 🟢 bullish / 🔴 bearish / ⚪ mixed) is shown next to it for timing entries; it is **not** part of the score.
+   - **Act now or wait:** a BUY is shown as **🟡 BUY · wait for pullback** when price is stretched (%B > 0.85 or RSI > 65), volume is light or 15m momentum is turning down, with a trade plan: pullback zone (MA7 / Bollinger middle), stop (below MA25 / middle band) and 1.5R / 3R targets. SELL mirrors this (**🟠 wait for bounce**).
+   - **⚡ Intraday scalping (long only):** a 15m LONG setup when the 1h trend is up (price above 1h MA25, signal not SELL), 15m is bullish with RSI 40–68, and there is a trigger (fresh 15m MACD cross up or a bounce off the 15m MA20). Stop just under the last 2 hours' low (skipped if wider than 2.5%), targets 1R / 2R capped at the 1h upper band. A new setup sends a high-priority **"Scalp setup"** push.
 4. Writes the report to the open issue titled **"Crypto Market Report"** (created on the first run) and to the run summary in the Actions tab.
-5. Sends a push notification to your phone through [ntfy](https://ntfy.sh) on every run with each coin's price and signal. When a signal changes (for example BTC HOLD → BUY) the push is titled "Crypto signal CHANGED" and sent at high priority.
+5. Sends push notifications through [ntfy](https://ntfy.sh) only when there is something to act on: a routine summary of the coins with a BUY / SELL signal or an active scalp setup, at most every `SUMMARY_MINUTES` (default 10, to stay under ntfy's free daily limit; nothing is sent while every coin is HOLD), plus immediate high-priority pushes for a changed signal ("Crypto signal CHANGED", e.g. BTC HOLD → BUY) or a new scalp setup ("Scalp setup").
 
 ## Daily events report
 
@@ -42,7 +44,7 @@ GitHub's own `schedule:` trigger ran these workflows only about once every 4–5
 
 | Workflow | cron-job.org schedule |
 |---|---|
-| `crypto-report.yml` (price report) | every 10 minutes |
+| `crypto-report.yml` (price report) | every 5 minutes (alerts within ~5 min; summary push at most every 10) |
 | `flows-report.yml` (flows report) | every 15 minutes |
 | `events-report.yml` (events report) | daily at 08:00 |
 
