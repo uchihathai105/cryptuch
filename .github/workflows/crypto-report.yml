@@ -4,6 +4,11 @@ on:
   # Started by cron-job.org through the workflow_dispatch API (GitHub's own schedule was
   # throttled to about one run every 4-5 hours). See README "Scheduling".
   workflow_dispatch:
+    inputs:
+      test_push:
+        description: Send a test push with every coin now (ignores signals and quiet hours)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,7 +44,8 @@ jobs:
         env:
           PREV_REPORT_PATH: PREV_REPORT.md
           NOTIFY_PATH: NOTIFY.txt
-          NOTIFY_ALWAYS: "true" # push on every run; signal changes are marked "OLD → NEW"
+          NOTIFY_ALWAYS: "true" # routine summary of BUY/SELL coins, at most every SUMMARY_MINUTES
+          TEST_PUSH: ${{ inputs.test_push }}
         run: python3 report.py
 
       - name: Show report in run summary
@@ -59,6 +65,7 @@ jobs:
       - name: Send push notification
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TEST_PUSH: ${{ inputs.test_push }}
           REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.number }}
         run: |
           if [ ! -s NOTIFY.txt ]; then
@@ -71,7 +78,7 @@ jobs:
           fi
           # Quiet hours: no pushes from 02:00 to 05:59 Vietnam time (the report issue still updates).
           hour=$(TZ=Asia/Ho_Chi_Minh date +%-H)
-          if [ "$hour" -ge 2 ] && [ "$hour" -lt 6 ]; then
+          if [ "$TEST_PUSH" != "true" ] && [ "$hour" -ge 2 ] && [ "$hour" -lt 6 ]; then
             echo "Quiet hours (02:00-06:00 Vietnam time); not sending."
             exit 0
           fi
@@ -85,6 +92,7 @@ jobs:
             title="Crypto signal CHANGED"; priority=high; tags=rotating_light
           else
             title="Crypto prices"; priority=default; tags=chart_with_upwards_trend
+            if [ "$TEST_PUSH" = "true" ]; then title="Crypto prices (test)"; fi
           fi
           curl -sS --fail-with-body \
             -H "Title: $title" \

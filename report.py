@@ -599,7 +599,7 @@ def previous_signals(report_text):
     return json.loads(marker.group(1)) if marker else {}
 
 
-def notification(results, previous, always=False, previous_scalp=frozenset()):
+def notification(results, previous, always=False, previous_scalp=frozenset(), test=False):
     """New scalp setups first (lines start with ⚡), then one line per coin whose signal changed
     (or every coin if always). '' if nothing to send."""
     new_scalps = [scalp_text(c, r["scalp"]) for c, r in results.items()
@@ -613,7 +613,7 @@ def notification(results, previous, always=False, previous_scalp=frozenset()):
         # Routine summaries only list coins with something to act on: a BUY/SELL signal
         # (including the wait-for-pullback/bounce variants) or an active scalp setup.
         actionable = r["signal"] != "HOLD" or r.get("scalp", {}).get("state") == "LONG"
-        if (always and actionable) or changed:
+        if (always and actionable) or changed or test:
             shown = r["plan"]["label"] if r.get("plan") else r["signal"]
             label = f"{before} → {shown}" if changed else shown
             line = f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})"
@@ -668,7 +668,8 @@ def main():
     if notify_path:
         previous, previous_scalp = previous_signals(prev_text), previous_scalps(prev_text)
         always = os.environ.get("NOTIFY_ALWAYS") == "true" and summary_due
-        message = notification(results, previous, always=always, previous_scalp=previous_scalp)
+        test = os.environ.get("TEST_PUSH") == "true"  # manual test: every coin, whatever its signal
+        message = notification(results, previous, always=always, previous_scalp=previous_scalp, test=test)
         with open(notify_path, "w") as f:
             f.write(message)
         print(f"\nNotification: {message or '(no signal change)'}")
