@@ -62,7 +62,7 @@ jobs:
           REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/issues/${{ steps.issue.outputs.number }}
         run: |
           if [ ! -s NOTIFY.txt ]; then
-            echo "Nothing to send (no coin data this run)."
+            echo "Nothing to send (no BUY/SELL coin, signal change or new scalp setup, or summary not due yet)."
             exit 0
           fi
           if [ -z "$NTFY_TOPIC" ]; then
