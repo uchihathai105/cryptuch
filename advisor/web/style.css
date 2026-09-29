@@ -66,15 +66,8 @@ button, input, select { font: inherit; color: inherit; }
 /* top bar */
 .topbar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
-  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between;
-  padding-block: 14px; background: var(--bg); border-bottom: 1px solid var(--line);
-}
-.brand { display: flex; gap: 10px; align-items: center; }
-.brand-mark {
-  width: 28px; height: 28px; border-radius: 7px; flex: none;
-  background: linear-gradient(to top, var(--candle-down) 0 30%, transparent 30% 38%, var(--candle-up) 38% 100%);
-  -webkit-mask: linear-gradient(90deg, #000 0 26%, transparent 26% 37%, #000 37% 63%, transparent 63% 74%, #000 74%);
-          mask: linear-gradient(90deg, #000 0 26%, transparent 26% 37%, #000 37% 63%, transparent 63% 74%, #000 74%);
+  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+  padding-block: 12px; background: var(--bg); border-bottom: 1px solid var(--line);
 }
 .status { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
 .stat { display: flex; flex-direction: column; gap: 2px; }
