@@ -16,6 +16,7 @@ from . import engine, store, telegram
 from .service import Advisor, clean, next_refresh_at
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # no line per Binance request
 log = logging.getLogger("main")
 WEB = Path(__file__).resolve().parent.parent / "web"
 

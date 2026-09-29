@@ -3,6 +3,14 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.1.1 — 29 Sep 2026
+- New backtest (`bash backtest.sh`): replays the day-trade rules over the last 90 days and compares four
+  versions, net of fees.
+- New optional rules, all **off** so live calls are unchanged until the backtest supports them:
+  stop at least 0.5 ATR beyond the setup level (`STOP_LEVEL_BUFFER_ATR`), no entry once price is more than
+  1 ATR past the setup level (`CHASE_MAX_ATR`), only trade with the BTC trend (`REGIME_REQUIRED`).
+- Terminal no longer prints a line for every Binance request.
+
 ## 1.1 — 29 Sep 2026
 - New **Altcoin screener** tab, updated once a day after the daily close. It scans every Binance USDT altcoin
   with at least US$10M 24h volume and a year of history, keeps those 50% or more below their 1-year high,

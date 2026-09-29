@@ -53,6 +53,18 @@ ADVISOR_HOST=0.0.0.0 bash run.sh
 Then on your phone open `http://<your Mac's IP>:8000` (find the IP in System Settings → Wi-Fi → Details).
 Anyone on the same Wi-Fi could open it too, so only do this on your home network.
 
+## Backtest the rules
+
+Replays the day-trade rules on the last 90 days of Binance data for the top 20 coins, one 15-minute
+close at a time, with the same exits as Active calls and trading fees included. It compares the current
+rules with three stricter versions (wider stop, no chasing, only with the BTC trend):
+```
+bash backtest.sh            # 20 coins, 90 days, about 3–6 minutes
+bash backtest.sh 30 120     # 30 coins, 120 days
+```
+The app can keep running meanwhile. Results are saved to `data/backtest_latest.txt`.
+Funding and open interest are not replayed, and past results do not guarantee future ones.
+
 ## Telegram alerts (optional, free)
 
 1. In Telegram, message **@BotFather**, send `/newbot`, and follow the steps. It gives you a **token**.
