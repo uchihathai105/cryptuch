@@ -317,9 +317,9 @@ def entry_plan(r):
         return {"label": "HOLD", "reasons": []}
     reasons = []
     if signal == "BUY":
-        if r["pct_b"] > 0.85:
-            reasons.append(f"price near the upper band (%B {r['pct_b']:.2f})")
-        if r["rsi"] > 65:
+        if r["pct_b"] > 0.8:
+            reasons.append(f"price near the top of the bands (%B {r['pct_b']:.2f}), don't chase")
+        if r["rsi"] > 60:
             reasons.append(f"RSI {r['rsi']:.0f} is hot")
         if st.get("bias") == "bearish" or st.get("cross") == "down":
             reasons.append("15m momentum turning down")
@@ -332,10 +332,10 @@ def entry_plan(r):
         targets = (entry + 1.5 * risk, entry + 3 * risk) if risk > 0 else None
         label = "BUY-WAIT" if reasons else "BUY"
     else:
-        if r["pct_b"] < 0.15:
-            reasons.append(f"price near the lower band (%B {r['pct_b']:.2f})")
-        if r["rsi"] < 35:
-            reasons.append(f"RSI {r['rsi']:.0f} is oversold")
+        if r["pct_b"] < 0.2:
+            reasons.append(f"price near the bottom of the bands (%B {r['pct_b']:.2f}), don't sell into the low")
+        if r["rsi"] < 40:
+            reasons.append(f"RSI {r['rsi']:.0f} is low")
         if st.get("bias") == "bullish" or st.get("cross") == "up":
             reasons.append("15m momentum turning up")
         if r["vol_ratio"] < 0.8:
@@ -351,9 +351,31 @@ def entry_plan(r):
 
 
 PLAN_ICON = {
-    "BUY": "🟢 BUY", "BUY-WAIT": "🟡 BUY · wait for pullback", "HOLD": "⚪ HOLD",
-    "SELL": "🔴 SELL", "SELL-WAIT": "🟠 SELL · wait for bounce",
+    "BUY": "🟢 BUY (MUA)", "BUY-WAIT": "🟡 BUY · wait for pullback (MUA · chờ giá điều chỉnh)",
+    "HOLD": "⚪ HOLD (GIỮ / đứng ngoài)",
+    "SELL": "🔴 SELL (BÁN)", "SELL-WAIT": "🟠 SELL · wait for bounce (BÁN · chờ giá hồi)",
 }
+# Short Vietnamese tags for push lines.
+VN_LABEL = {"BUY": "MUA", "BUY-WAIT": "MUA·chờ điều chỉnh", "HOLD": "GIỮ",
+            "SELL": "BÁN", "SELL-WAIT": "BÁN·chờ hồi"}
+
+
+def plan_vn(p):
+    """One-line Vietnamese summary of the trade plan."""
+    if p["label"] == "HOLD" or not p.get("targets"):
+        return ""
+    z0, z1 = p["zone"]
+    zone = fmt_price(z0) if abs(z1 - z0) < 1e-9 else f"{fmt_price(z0)}–{fmt_price(z1)}"
+    t1, t2 = (fmt_price(t) for t in p["targets"])
+    stop = fmt_price(p["stop"])
+    if p["label"] == "BUY":
+        return f"Có thể mua quanh {fmt_price(p['entry'])}; cắt lỗ {stop}; chốt lời {t1} / {t2}."
+    if p["label"] == "BUY-WAIT":
+        return f"Xu hướng tăng nhưng giá đang cao, đừng mua đuổi. Chờ giá về {zone} rồi mua; cắt lỗ {stop}; chốt lời {t1} / {t2}."
+    if p["label"] == "SELL":
+        return f"Xu hướng giảm: nên thoát/không giữ quanh {fmt_price(p['entry'])}. Nếu giá vượt lại {stop} thì tín hiệu bán bị hủy."
+    return (f"Xu hướng giảm nhưng giá đã gần đáy, đừng bán tháo. Chờ giá hồi lên {zone} rồi bán; "
+            f"nếu giá vượt lại {stop} thì hủy tín hiệu bán. Chưa có hàng thì đừng bắt đáy.")
 
 
 def plan_text(p):
@@ -474,6 +496,14 @@ def render(results, now):
 
     lines += [
         "",
+        "**Chú thích:** 🟢 MUA: xu hướng tăng, vào được · 🟡 MUA · chờ điều chỉnh: xu hướng tăng nhưng giá đang cao, "
+        "chờ giá giảm về vùng gợi ý · ⚪ GIỮ: chưa có tín hiệu rõ, đứng ngoài · 🔴 BÁN: xu hướng giảm, thoát/không giữ · "
+        "🟠 BÁN · chờ hồi: xu hướng giảm nhưng giá đã gần đáy, đừng bán tháo, chờ hồi rồi bán. Chỉ giao dịch spot "
+        "(không bán khống).",
+    ]
+
+    lines += [
+        "",
         "## ⚡ Intraday scalping (15m candles, long only, with the 1h trend)",
         "",
         "| Coin | Setup | Entry | Stop | Target 1 / 2 | Why |",
@@ -484,10 +514,10 @@ def render(results, now):
         if "error" in r or not s:
             continue
         if s["state"] == "LONG":
-            lines.append(f"| **{coin}** | ⚡ **LONG** | {fmt_price(s['entry'])} | {fmt_price(s['stop'])} "
+            lines.append(f"| **{coin}** | ⚡ **LONG (mua lướt)** | {fmt_price(s['entry'])} | {fmt_price(s['stop'])} "
                          f"(−{s['risk_pct']:.1f}%) | {fmt_price(s['t1'])} / {fmt_price(s['t2'])} | {s['why']} |")
         else:
-            icon_s = "⛔ avoid" if s["state"] == "AVOID" else "⏳ wait"
+            icon_s = "⛔ avoid (tránh)" if s["state"] == "AVOID" else "⏳ wait (chờ)"
             lines.append(f"| **{coin}** | {icon_s} | | | | {s['why']} |")
     lines += ["", "LONG needs: 1h price above MA25 and 1h signal not SELL; 15m bullish with RSI 40–68; and a "
               "trigger (fresh 15m MACD cross up, or a bounce off the 15m MA20). Stop sits just under the last "
@@ -542,7 +572,7 @@ def render(results, now):
             f"### {coin}: {PLAN_ICON[r['plan']['label']] if r.get('plan') else icon[r['signal']]} (score {r['score']:+d})",
             f"24h range {fmt_price(r['low_24h'])} – {fmt_price(r['high_24h'])}."
             + (f" Short-term (15m): {short_label(r['short'])}." if r.get("short") else ""),
-            *([f"", f"**Trade plan:** {plan}"] if plan else []),
+            *([f"", f"**Trade plan:** {plan}", f"", f"**Gợi ý:** {plan_vn(r['plan'])}"] if plan else []),
             "",
             "| Factor | Points | Reading |",
             "|---|---|---|",
@@ -565,8 +595,9 @@ def render(results, now):
         f"Score {BUY_THRESHOLD:+d} or more → BUY, {SELL_THRESHOLD:+d} or less → SELL, otherwise HOLD.",
         "",
         "**Act now or wait?** A BUY becomes **🟡 BUY · wait for pullback** when price is stretched "
-        "(%B > 0.85 or RSI > 65), volume is light (< 0.8x) or 15m momentum is turning down; the plan then "
-        "names the pullback zone (MA7 / Bollinger middle). SELL mirrors this (**🟠 wait for bounce**). "
+        "(%B > 0.8 or RSI > 60), volume is light (< 0.8x) or 15m momentum is turning down; the plan then "
+        "names the pullback zone (MA7 / Bollinger middle). SELL mirrors this (**🟠 wait for bounce** when "
+        "%B < 0.2, RSI < 40, volume is light or 15m momentum is turning up, so you don't sell into the low). "
         "Stops sit below MA25 / Bollinger middle (above for SELL); targets are 1.5R and 3R.",
         "",
         "> ⚠️ This is an automated technical-indicator summary, not financial advice. "
@@ -599,7 +630,7 @@ def previous_signals(report_text):
     return json.loads(marker.group(1)) if marker else {}
 
 
-def notification(results, previous, always=False, previous_scalp=frozenset()):
+def notification(results, previous, always=False, previous_scalp=frozenset(), test=False):
     """New scalp setups first (lines start with ⚡), then one line per coin whose signal changed
     (or every coin if always). '' if nothing to send."""
     new_scalps = [scalp_text(c, r["scalp"]) for c, r in results.items()
@@ -613,9 +644,10 @@ def notification(results, previous, always=False, previous_scalp=frozenset()):
         # Routine summaries only list coins with something to act on: a BUY/SELL signal
         # (including the wait-for-pullback/bounce variants) or an active scalp setup.
         actionable = r["signal"] != "HOLD" or r.get("scalp", {}).get("state") == "LONG"
-        if (always and actionable) or changed:
+        if (always and actionable) or changed or test:
             shown = r["plan"]["label"] if r.get("plan") else r["signal"]
             label = f"{before} → {shown}" if changed else shown
+            label += f" ({VN_LABEL.get(shown, shown)})"
             line = f"{coin} {label} at {fmt_price(r['price'])} (score {r['score']:+d}, 24h {fmt_pct(r['change_24h'])})"
             if r.get("short"):
                 st = r["short"]
@@ -668,7 +700,8 @@ def main():
     if notify_path:
         previous, previous_scalp = previous_signals(prev_text), previous_scalps(prev_text)
         always = os.environ.get("NOTIFY_ALWAYS") == "true" and summary_due
-        message = notification(results, previous, always=always, previous_scalp=previous_scalp)
+        test = os.environ.get("TEST_PUSH") == "true"  # manual test: every coin, whatever its signal
+        message = notification(results, previous, always=always, previous_scalp=previous_scalp, test=test)
         with open(notify_path, "w") as f:
             f.write(message)
         print(f"\nNotification: {message or '(no signal change)'}")
