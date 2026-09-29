@@ -42,7 +42,7 @@ def _check(name: str, passed: bool, detail: str, applies: bool = True) -> dict:
     return {"name": name, "passed": bool(passed), "detail": detail, "applies": applies}
 
 
-def _setup(d: pd.DataFrame, side: str) -> tuple[bool, str, str]:
+def _setup(d: pd.DataFrame, side: str) -> tuple[bool, str, str, float | None]:
     """Pullback to EMA 20 / VWAP that holds, or a close through the last swing level."""
     last = d.iloc[-1]
     atr = last["atr"]
@@ -54,22 +54,23 @@ def _setup(d: pd.DataFrame, side: str) -> tuple[bool, str, str]:
             continue
         label = "EMA 20" if level_name == "ema20" else "VWAP"
         if side == "long" and recent["low"].min() <= level + C.PULLBACK_ATR * atr and last["close"] > level:
-            return True, "pullback", f"1h pullback to {label} ({fmt(level)}) held; close {fmt(last['close'])}"
+            return True, "pullback", f"1h pullback to {label} ({fmt(level)}) held; close {fmt(last['close'])}", float(level)
         if side == "short" and recent["high"].max() >= level - C.PULLBACK_ATR * atr and last["close"] < level:
-            return True, "pullback", f"1h rally to {label} ({fmt(level)}) failed; close {fmt(last['close'])}"
+            return True, "pullback", f"1h rally to {label} ({fmt(level)}) failed; close {fmt(last['close'])}", float(level)
     if side == "long" and sh:
         lvl = sh[-1][0]
         if last["close"] > lvl and recent["close"].iloc[0] <= lvl * 1.002:
-            return True, "breakout", f"1h close {fmt(last['close'])} broke above swing high {fmt(lvl)}"
+            return True, "breakout", f"1h close {fmt(last['close'])} broke above swing high {fmt(lvl)}", float(lvl)
     if side == "short" and sl:
         lvl = sl[-1][0]
         if last["close"] < lvl and recent["close"].iloc[0] >= lvl * 0.998:
-            return True, "breakdown", f"1h close {fmt(last['close'])} broke below swing low {fmt(lvl)}"
+            return True, "breakdown", f"1h close {fmt(last['close'])} broke below swing low {fmt(lvl)}", float(lvl)
     want = "a pullback to EMA 20/VWAP or a breakout" if side == "long" else "a failed rally or a breakdown"
-    return False, "", f"No 1h setup yet; waiting for {want}"
+    return False, "", f"No 1h setup yet; waiting for {want}", None
 
 
-def _levels(side: str, entry: float, setup_df: pd.DataFrame, trend_df: pd.DataFrame, setup_kind: str) -> dict:
+def _levels(side: str, entry: float, setup_df: pd.DataFrame, trend_df: pd.DataFrame, setup_kind: str,
+            setup_level: float | None = None) -> dict:
     atr = float(setup_df.iloc[-1]["atr"])
     sh1, sl1 = swings(setup_df)
     sh4, sl4 = swings(trend_df)
@@ -80,6 +81,10 @@ def _levels(side: str, entry: float, setup_df: pd.DataFrame, trend_df: pd.DataFr
     else:
         above = [p for p, _ in sh1 if p > entry]
         stop = above[-1] + C.STOP_BUFFER_ATR * atr if above else entry + C.STOP_DEFAULT_ATR * atr
+    if C.STOP_LEVEL_BUFFER_ATR and setup_level is not None:
+        # keep the stop clearly beyond the level the setup bounced from (EMA 20, VWAP or the broken swing)
+        beyond = setup_level - sign * C.STOP_LEVEL_BUFFER_ATR * atr
+        stop = min(stop, beyond) if side == "long" else max(stop, beyond)
     dist = abs(entry - stop)
     dist = min(max(dist, C.STOP_MIN_ATR * atr), C.STOP_MAX_ATR * atr)
     stop = entry - sign * dist
@@ -123,7 +128,7 @@ def evaluate_side(side: str, frames: dict, regime: str, positioning: dict | None
         f"4h close {fmt(t_last['close'])} {'above' if t_last['close'] > t_last['ema50'] else 'below'} EMA 50 "
         f"({fmt(t_last['ema50'])}); EMA 20 {'above' if t_last['ema20'] > t_last['ema50'] else 'below'} EMA 50"))
 
-    setup_ok, setup_kind, setup_text = _setup(s_df, side)
+    setup_ok, setup_kind, setup_text, setup_level = _setup(s_df, side)
     checks.append(_check("setup", setup_ok, setup_text))
 
     lo, hi = C.RSI_LONG_RANGE if long else C.RSI_SHORT_RANGE
@@ -187,7 +192,17 @@ def evaluate_side(side: str, frames: dict, regime: str, positioning: dict | None
         if not (lower_high and vol_falling):
             result["reason"] = "Top gainer: short only after a 1h lower high on falling volume"
             return result
-    lv = _levels(side, float(e_last["close"]), s_df, t_df, setup_kind)
+    entry = float(e_last["close"])
+    if C.CHASE_MAX_ATR and setup_level is not None:
+        away = abs(entry - setup_level) / float(s_last["atr"])
+        if away > C.CHASE_MAX_ATR:
+            result["reason"] = (f"Price is {away:.1f} ATR away from the setup level {fmt(setup_level)}: "
+                                f"too late, wait for a pullback")
+            return result
+    if C.REGIME_REQUIRED and not regime_ok:
+        result["reason"] = f"BTC regime is {regime}: only trades with the BTC trend"
+        return result
+    lv = _levels(side, entry, s_df, t_df, setup_kind, setup_level)
     result.update(lv)
     if lv["rr"] < C.MIN_REWARD_RISK:
         result["reason"] = (f"Reward-to-risk {lv['rr']:.1f} below {C.MIN_REWARD_RISK}: "

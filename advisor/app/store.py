@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS ratings (
   day TEXT NOT NULL, symbol TEXT NOT NULL, rating TEXT NOT NULL, close REAL,
   PRIMARY KEY (day, symbol)
 );
+CREATE TABLE IF NOT EXISTS screener (
+  day TEXT NOT NULL, symbol TEXT NOT NULL, stage TEXT NOT NULL, score INTEGER, price REAL,
+  PRIMARY KEY (day, symbol)
+);
 CREATE TABLE IF NOT EXISTS journal (
   id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
   trade_date TEXT, symbol TEXT, market TEXT, side TEXT, entry REAL, exit REAL,
@@ -116,6 +120,23 @@ def rating_change(symbol: str, current: str) -> dict | None:
             since = rows[i - 1]["day"] if i > 0 else None
             return {"previous": r["rating"], "since": since}
     return None
+
+
+# ---------------------------------------------------------------- screener
+def save_screen(day: str, rows: list[dict]) -> None:
+    with _lock:
+        _db.execute("DELETE FROM screener WHERE day=?", (day,))
+        _db.executemany("INSERT INTO screener(day, symbol, stage, score, price) VALUES(?,?,?,?,?)",
+                        [(day, r["symbol"], r["stage"], r["score"], r["price"]) for r in rows])
+        _db.commit()
+
+
+def previous_screen(day: str) -> dict[str, str]:
+    """Stages from the most recent earlier run, to spot coins that newly turned Recovering."""
+    row = _q("SELECT MAX(day) AS d FROM screener WHERE day < ?", (day,)).fetchone()
+    if not row or not row["d"]:
+        return {}
+    return {r["symbol"]: r["stage"] for r in _q("SELECT symbol, stage FROM screener WHERE day=?", (row["d"],))}
 
 
 # ---------------------------------------------------------------- journal

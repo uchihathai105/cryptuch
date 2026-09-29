@@ -19,14 +19,29 @@ class BinanceError(Exception):
 
 class Binance:
     def __init__(self) -> None:
-        self.client = httpx.AsyncClient(timeout=20, headers={"User-Agent": "crypto-advisor/1.0"})
-        self.sem = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
+        self._client: httpx.AsyncClient | None = None
+        self._sem: asyncio.Semaphore | None = None
         self.blocked_until = 0.0
         self.spot_base = config.SPOT_BASE
         self.used_weight: dict[str, str] = {}
 
+    # Created on first use, inside the running event loop. On Python 3.9 an asyncio
+    # Semaphore made at import time binds to a different loop and every request fails.
+    @property
+    def client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=20, headers={"User-Agent": "crypto-advisor/1.0"})
+        return self._client
+
+    @property
+    def sem(self) -> asyncio.Semaphore:
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(config.MAX_CONCURRENT_REQUESTS)
+        return self._sem
+
     async def close(self) -> None:
-        await self.client.aclose()
+        if self._client is not None:
+            await self._client.aclose()
 
     async def _get(self, base: str, path: str, params: dict | None = None, market: str = "spot"):
         if time.time() < self.blocked_until:

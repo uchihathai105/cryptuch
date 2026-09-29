@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
-from . import engine, store, telegram
+from . import engine, screener, store, telegram
 from .binance import Binance, BinanceError
 from .indicators import add_indicators
 
@@ -49,12 +49,21 @@ class Advisor:
         self.futures_set: set[str] = set()
         self.futures_set_at = 0.0
         self.oi_cache: dict[str, tuple[float, float | None]] = {}
-        self.lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
         self.state: dict = {
             "last_refresh": None, "last_error": None, "refreshing": False,
             "regime": None, "lists": {"top_volume": [], "top_gainers": [], "watchlist": []},
             "coins": {}, "next_refresh": next_refresh_at(),
+            "screener": {"day": None, "running": False, "updated": None, "results": [],
+                         "scanned": 0, "falling": 0, "error": None},
         }
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        # created inside the running loop (Python 3.9 binds locks to the loop at creation)
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     # ------------------------------------------------------------ candles
     async def candles(self, market: str, symbol: str, interval: str) -> pd.DataFrame:
@@ -208,6 +217,51 @@ class Advisor:
         self.state["used_weight"] = dict(self.api.used_weight)
         if alerts and telegram.configured():
             await telegram.send("\n\n".join(alerts[:15]))
+
+        # Altcoin screener: once a day (after the 00:00 UTC daily close), in the background
+        utc_day = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+        sc = self.state["screener"]
+        if sc["day"] != utc_day and not sc["running"]:
+            asyncio.create_task(self.run_screener(tickers, utc_day))
+
+    # ------------------------------------------------------------ altcoin screener
+    async def run_screener(self, tickers: list[dict], day: str) -> None:
+        sc = self.state["screener"]
+        sc["running"] = True
+        try:
+            pool = [t for t in tickers if t["symbol"] != "BTCUSDT" and self.eligible_screen(t)]
+            await asyncio.gather(*(self._safe_candles("spot", t["symbol"], "1d") for t in pool))
+            btc_daily = self.frames.get(("spot", "BTCUSDT", "1d"))
+            results = []
+            for t in pool:
+                r = screener.screen_coin(t["symbol"], self.frames.get(("spot", t["symbol"], "1d")), btc_daily,
+                                         float(t["quoteVolume"]), float(t["priceChangePercent"]))
+                if r:
+                    results.append(r)
+            listed = screener.rank(results)
+            prev = store.previous_screen(day)
+            store.save_screen(day, listed)
+            new_rec = [r for r in listed if r["stage"] == "Recovering" and prev and prev.get(r["symbol"]) != "Recovering"]
+            sc.update(day=day, updated=time.time(), results=clean(listed), scanned=len(pool),
+                      falling=sum(1 for r in results if r["stage"] == "Falling"), error=None)
+            log.info("Screener: %d coins scanned, %d listed", len(pool), len(listed))
+            if new_rec and telegram.configured():
+                lines = [f"• <b>{r['base']}</b> score {r['score']} · {r['drawdown']:.0f}% from 1y high · "
+                         f"wrong below {engine.fmt(r['invalidation'])}" for r in new_rec[:10]]
+                await telegram.send("🌱 <b>Altcoins newly Recovering</b> (check the project before buying)\n"
+                                    + "\n".join(lines))
+        except Exception as e:
+            log.exception("Screener failed")
+            sc["error"] = str(e)
+        finally:
+            sc["running"] = False
+
+    @staticmethod
+    def eligible_screen(t: dict) -> bool:
+        s = t["symbol"]
+        if not s.endswith("USDT") or s.endswith(C.EXCLUDED_SUFFIXES) or s[:-4] in C.STABLE_BASES:
+            return False
+        return float(t.get("quoteVolume") or 0) >= C.SCREEN_MIN_VOLUME_USDT
 
     # ------------------------------------------------------------ call tracking (URS F11, F23)
     def _open_new(self, coins: dict) -> list[str]:

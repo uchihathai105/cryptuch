@@ -6,6 +6,9 @@ A personal dashboard that reads Binance market data every 15 minutes and gives r
   with entry zone, stop-loss, two targets, reward-to-risk, confidence and position size.
 - **Long term** (months): Accumulate / Hold / Reduce with a buy-in zone.
 - Coin lists: top 10 by 24h volume, top 10 gainers, and your watchlist.
+- **Altcoin screener** (daily): liquid altcoins still 50%+ below their 1-year high, graded Recovering or
+  Basing, with a buy-in zone and the price that would prove the idea wrong. It sees only price and volume,
+  so check each project (token unlocks, news) before buying.
 - Active calls are followed until a target, the stop or an exit rule ends them; results build a track record.
 - Optional Telegram alerts for new calls, targets, exits and long-term rating changes.
 
@@ -50,6 +53,18 @@ ADVISOR_HOST=0.0.0.0 bash run.sh
 Then on your phone open `http://<your Mac's IP>:8000` (find the IP in System Settings → Wi-Fi → Details).
 Anyone on the same Wi-Fi could open it too, so only do this on your home network.
 
+## Backtest the rules
+
+Replays the day-trade rules on the last 90 days of Binance data for the top 20 coins, one 15-minute
+close at a time, with the same exits as Active calls and trading fees included. It compares the current
+rules with three stricter versions (wider stop, no chasing, only with the BTC trend):
+```
+bash backtest.sh            # 20 coins, 90 days, about 3–6 minutes
+bash backtest.sh 30 120     # 30 coins, 120 days
+```
+The app can keep running meanwhile. Results are saved to `data/backtest_latest.txt`.
+Funding and open interest are not replayed, and past results do not guarantee future ones.
+
 ## Telegram alerts (optional, free)
 
 1. In Telegram, message **@BotFather**, send `/newbot`, and follow the steps. It gives you a **token**.
@@ -75,7 +90,7 @@ Anyone on the same Wi-Fi could open it too, so only do this on your home network
 
 ## How often it calls Binance
 
-About 5 seconds after every 15-minute candle close. Only new candles are downloaded after the first load:
+About 5 seconds after every 15-minute candle close, plus one daily altcoin scan after 07:00 your time. Only new candles are downloaded after the first load:
 15m every cycle, 1h hourly, 4h every 4 hours, daily and weekly once a day. A cycle uses roughly 100–450
 request weight, far below Binance's limits (6,000 per minute for spot, 2,400 for futures). If Binance
 ever returns a rate-limit error, the app pauses for the time Binance asks and keeps showing the last data
