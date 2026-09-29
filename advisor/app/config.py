@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.0 (2026-09-29)"
+RULES_VERSION = "1.1 (2026-09-29)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -36,7 +36,7 @@ EXCLUDED_SUFFIXES = ("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT")
 
 # ---------------------------------------------------------------- Timeframes (URS section 4)
 DAY_TRADE = {"direction": "4h", "setup": "1h", "entry": "15m"}
-CANDLE_LIMITS = {"15m": 200, "1h": 200, "4h": 200, "1d": 365, "1w": 104}
+CANDLE_LIMITS = {"15m": 200, "1h": 200, "4h": 200, "1d": 400, "1w": 104}  # 1d: a full year + margin
 INTERVAL_MINUTES = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
 
 # ---------------------------------------------------------------- Indicators
@@ -68,6 +68,19 @@ GAINER_CHASE_RSI = 80.0
 CHECK_WEIGHTS = {
     "trend": 20, "setup": 20, "rsi": 10, "macd": 10, "volume": 10,
     "timing": 10, "regime": 10, "positioning": 10,
+}
+
+# ---------------------------------------------------------------- Altcoin screener (runs once a day)
+SCREEN_MIN_VOLUME_USDT = 10_000_000   # 24h quote volume, so you can get in and out
+SCREEN_MIN_HISTORY_DAYS = 365         # listed at least a year: skips fresh listings
+SCREEN_MAX_DRAWDOWN = -50.0           # at least 50% below its 1-year high = "still low"
+SCREEN_MAX_UP_FROM_LOW = 100.0        # not already doubled off its 1-year low
+SCREEN_RSI_RANGE = (45, 70)           # momentum turning up, not overheated
+SCREEN_VOLUME_RATIO = 1.2             # 20-day average volume vs 90-day average
+SCREEN_LIST_SIZE = 25
+SCREEN_WEIGHTS = {
+    "above_sma50": 20, "sma50_rising": 15, "higher_low": 20, "beats_btc": 15,
+    "volume_returning": 10, "rsi_ok": 10, "not_extended": 10,
 }
 
 # ---------------------------------------------------------------- Risk defaults (URS F17, F18)

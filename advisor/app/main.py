@@ -71,6 +71,7 @@ def state():
         "track_record": store.track_record(), "settings": settings,
         "telegram": telegram.configured(), "rules_version": C.RULES_VERSION,
         "used_weight": s.get("used_weight", {}),
+        "screener": s["screener"],
     }))
 
 

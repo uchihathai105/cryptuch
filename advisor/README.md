@@ -6,6 +6,9 @@ A personal dashboard that reads Binance market data every 15 minutes and gives r
   with entry zone, stop-loss, two targets, reward-to-risk, confidence and position size.
 - **Long term** (months): Accumulate / Hold / Reduce with a buy-in zone.
 - Coin lists: top 10 by 24h volume, top 10 gainers, and your watchlist.
+- **Altcoin screener** (daily): liquid altcoins still 50%+ below their 1-year high, graded Recovering or
+  Basing, with a buy-in zone and the price that would prove the idea wrong. It sees only price and volume,
+  so check each project (token unlocks, news) before buying.
 - Active calls are followed until a target, the stop or an exit rule ends them; results build a track record.
 - Optional Telegram alerts for new calls, targets, exits and long-term rating changes.
 
@@ -75,7 +78,7 @@ Anyone on the same Wi-Fi could open it too, so only do this on your home network
 
 ## How often it calls Binance
 
-About 5 seconds after every 15-minute candle close. Only new candles are downloaded after the first load:
+About 5 seconds after every 15-minute candle close, plus one daily altcoin scan after 07:00 your time. Only new candles are downloaded after the first load:
 15m every cycle, 1h hourly, 4h every 4 hours, daily and weekly once a day. A cycle uses roughly 100–450
 request weight, far below Binance's limits (6,000 per minute for spot, 2,400 for futures). If Binance
 ever returns a rate-limit error, the app pauses for the time Binance asks and keeps showing the last data

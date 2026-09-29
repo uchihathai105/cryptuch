@@ -34,7 +34,7 @@
   const clock = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateTime = (ms) => new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const TONE = { Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
+  const TONE = { Recovering: "good", Basing: "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
   function pill(label, conf) {
     const tone = TONE[label] ?? "";
     const c = conf != null && label !== "Wait" ? `<span class="conf">${conf}</span>` : "";
@@ -159,6 +159,48 @@
     }).join("") || `<tr><td colspan="10" class="wide">Loading daily and weekly candles…</td></tr>`;
   }
 
+  // ------------------------------------------------------------ altcoin screener
+  const screenOf = (sym) => (S && S.screener && S.screener.results || []).find((r) => r.symbol === sym);
+  function renderScreen() {
+    const sc = S.screener || {};
+    const rows = sc.results || [];
+    const rec = rows.filter((r) => r.stage === "Recovering").length;
+    $("#screenKpis").innerHTML = sc.updated
+      ? kpi(rec, "recovering") + kpi(rows.length - rec, "basing") + kpi(sc.scanned, "altcoins scanned") +
+        kpi(sc.falling, "still making new lows") + kpi(new Date(sc.updated * 1000).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }), "last scan")
+      : "";
+    const body = $("#screenTable tbody");
+    if (!rows.length) {
+      const msg = sc.error ? `Scan failed: ${esc(sc.error)}` : sc.running || !sc.updated
+        ? "Scanning every liquid altcoin on Binance… the first scan takes about a minute."
+        : "No altcoin passes the rules today.";
+      body.innerHTML = `<tr><td colspan="10" class="wide">${msg}</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows.map((r) => `<tr class="click" data-sym="${esc(r.symbol)}" data-mkt="spot" data-tf="1d" title="${esc(r.note)}">
+      <td class="coin-cell">${esc(r.base)}</td><td>${pill(r.stage)}</td>
+      <td class="num">${r.score}</td><td class="num">${px(r.price)}</td>
+      <td class="num down">${pct(r.drawdown, 0)}</td><td class="num">${pct(r.up_from_low, 0)}</td>
+      <td class="num ${cls(r.rs_btc30)}">${r.rs_btc30 == null ? "–" : `${r.rs_btc30 > 0 ? "+" : ""}${r.rs_btc30.toFixed(1)} pts`}</td>
+      <td class="num">${r.vol_ratio.toFixed(2)}×</td>
+      <td class="mono">${r.zone ? `${px(r.zone[0])} – ${px(r.zone[1])}` : "–"}</td>
+      <td class="num">${px(r.invalidation)} <small>(${pct(r.invalidation_pct, 0)})</small></td></tr>`).join("");
+  }
+  function screenCard(r) {
+    const names = { above_sma50: "Above 50-day", sma50_rising: "50-day rising", higher_low: "Higher low", beats_btc: "Beats BTC (30d)", volume_returning: "Volume returning", rsi_ok: "RSI", not_extended: "Not run up yet" };
+    return `<div class="card"><div class="callhead"><h3>Altcoin screener</h3>${pill(r.stage)}</div>
+      <p class="reason">${esc(r.note)}</p>
+      <div><div class="label">Score ${r.score}/100</div><div class="meter"><i style="width:${r.score}%"></i></div></div>
+      <dl class="levels">
+        <dt>From 1-year high</dt><dd>${pct(r.drawdown, 0)} <small>(${px(r.high1y)})</small></dd>
+        <dt>From 1-year low</dt><dd>${pct(r.up_from_low, 0)} <small>(${px(r.low1y)})</small></dd>
+        ${r.zone ? `<dt>Buy-in zone</dt><dd>${px(r.zone[0])} – ${px(r.zone[1])}</dd>` : ""}
+        <dt>Idea wrong below</dt><dd>${px(r.invalidation)} <small>(${pct(r.invalidation_pct, 0)})</small></dd>
+      </dl>
+      <ul class="checks">${r.checks.map((k) => `<li class="${k.passed ? "ok" : "no"}"><span class="ic">${k.passed ? "✓" : "✗"}</span><span><b>${names[k.name]}</b> · ${esc(k.detail)}</span></li>`).join("")}</ul>
+      <p class="hint">Price and volume only. Check the project's token unlocks and news before buying.</p></div>`;
+  }
+
   // ------------------------------------------------------------ active calls + record
   function renderActive() {
     const rows = S.active_calls || [];
@@ -261,7 +303,8 @@
   function renderCoin() {
     const c = S.coins[view.symbol];
     $("#cvTitle").textContent = view.symbol.replace(/USDT$/, " / USDT");
-    $("#cvSub").innerHTML = c ? `${px(c.price)} · <span class="${cls(c.pct24)}">${pct(c.pct24)}</span> 24h · vol ${(c.quote_volume / 1e6).toFixed(0)}M USDT` : "";
+    const info = c || screenOf(view.symbol);
+    $("#cvSub").innerHTML = info ? `${px(info.price)} · <span class="${cls(info.pct24)}">${pct(info.pct24)}</span> 24h · vol ${(info.quote_volume / 1e6).toFixed(0)}M USDT` : "";
     $("#lgVwap").hidden = !["15m", "1h"].includes(view.tf);
     $("#lgSma").hidden = view.tf !== "1d";
     renderSide(c);
@@ -269,7 +312,11 @@
   }
   function renderSide(c) {
     const side = $("#cvSide");
-    if (!c) { side.innerHTML = `<div class="card"><p class="reason">This coin is not in any list right now.</p></div>`; return; }
+    const sr = screenOf(view.symbol);
+    if (!c) {
+      side.innerHTML = sr ? screenCard(sr) : `<div class="card"><p class="reason">This coin is not in any list right now.</p></div>`;
+      return;
+    }
     const r = c[view.market];
     let html = "";
     if (r) {
@@ -306,6 +353,7 @@
         <ul class="checks">${lt.reasons.map((t) => `<li class="na" style="opacity:1"><span class="ic">·</span><span>${esc(t)}</span></li>`).join("")}</ul>
         ${lt.zone ? `<p class="reason">Buy-in zone for gradual buying: <span class="mono">${px(lt.zone[0])} – ${px(lt.zone[1])}</span></p>` : ""}</div>`;
     }
+    if (sr) html += screenCard(sr);
     side.innerHTML = html;
   }
   async function drawChart(c) {
@@ -361,6 +409,7 @@
     renderHeader();
     renderDay();
     renderLong();
+    renderScreen();
     renderActive();
     renderSettings(false);
     if (view.symbol && !$("#coinView").hidden) renderSide(S.coins[view.symbol]);

@@ -25,6 +25,7 @@
 <nav class="tabs" role="tablist">
   <button role="tab" data-tab="day" class="tab active" type="button">Day trade</button>
   <button role="tab" data-tab="long" class="tab" type="button">Long term</button>
+  <button role="tab" data-tab="screen" class="tab" type="button">Altcoin screener</button>
   <button role="tab" data-tab="active" class="tab" type="button">Active calls <span id="activeCount" class="count"></span></button>
   <button role="tab" data-tab="journal" class="tab" type="button">Journal</button>
   <button role="tab" data-tab="settings" class="tab" type="button">Settings</button>
@@ -70,6 +71,26 @@
           <th>Coin</th><th>Rating</th><th class="num">Price</th><th class="num">vs 200-day</th>
           <th class="num">90d</th><th class="num">180d</th><th class="num">vs BTC 90d</th>
           <th class="num">From 1y high</th><th>Buy-in zone</th><th>Last change</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Altcoin screener -->
+  <section id="tab-screen" class="panel" hidden>
+    <div class="section-head">
+      <h2>Altcoins still far below their highs</h2>
+      <p class="hint">Liquid Binance USDT altcoins, listed at least a year, trading 50% or more below their 1-year high. <b>Recovering</b>: the trend has turned up (above a rising 50-day average, with a higher low). <b>Basing</b>: stopped making new lows, no uptrend yet. Coins still making new lows are left out. Updated once a day after the daily close (07:00 your time).</p>
+      <p class="hint">A low unit price means nothing on its own: what matters is how far a coin sits below its own history. These rules only see price and volume. Many coins that fell 80% keep falling, often because of token unlocks, dilution or a fading project, so check each project before buying.</p>
+    </div>
+    <div id="screenKpis" class="kpis"></div>
+    <div class="table-wrap">
+      <table class="grid" id="screenTable">
+        <thead><tr>
+          <th>Coin</th><th>Stage</th><th class="num">Score</th><th class="num">Price</th>
+          <th class="num">From 1y high</th><th class="num">From 1y low</th><th class="num">30d vs BTC</th>
+          <th class="num">Volume trend</th><th>Buy-in zone</th><th class="num">Wrong below</th>
         </tr></thead>
         <tbody></tbody>
       </table>
