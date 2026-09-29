@@ -49,12 +49,19 @@ class Advisor:
         self.futures_set: set[str] = set()
         self.futures_set_at = 0.0
         self.oi_cache: dict[str, tuple[float, float | None]] = {}
-        self.lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
         self.state: dict = {
             "last_refresh": None, "last_error": None, "refreshing": False,
             "regime": None, "lists": {"top_volume": [], "top_gainers": [], "watchlist": []},
             "coins": {}, "next_refresh": next_refresh_at(),
         }
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        # created inside the running loop (Python 3.9 binds locks to the loop at creation)
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     # ------------------------------------------------------------ candles
     async def candles(self, market: str, symbol: str, interval: str) -> pd.DataFrame:

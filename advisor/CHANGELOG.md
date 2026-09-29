@@ -3,6 +3,10 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.0.1 — 29 Sep 2026
+- Fix: on Python 3.9 (the Mac's built-in Python) every refresh failed with "attached to a different loop".
+  The request limiter and refresh lock are now created inside the running event loop. Signal rules unchanged.
+
 ## 1.0 — 29 Sep 2026
 - First version, following URS section 4.
 - Day trade: 4h direction, 1h setup, 15m entry timing. Refresh 5 s after every 15-minute close.
