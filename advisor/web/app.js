@@ -45,6 +45,7 @@
   // ------------------------------------------------------------ data
   async function api(path, opts) {
     const r = await fetch(path, opts);
+    if (r.status === 401) { location.href = "/login"; throw new Error("Login required"); }
     if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
     return r.json();
   }
@@ -406,6 +407,7 @@
 
   // ------------------------------------------------------------ render all
   function render() {
+    $("#logout").hidden = !S.auth;
     renderHeader();
     renderDay();
     renderLong();
@@ -491,3 +493,9 @@
   setInterval(load, 30_000);
   setInterval(() => S && renderHeader(), 1000);
 })();
+
+document.getElementById("logout").addEventListener("click", async (e) => {
+  e.preventDefault();
+  await fetch("/logout", { method: "POST" });
+  location.href = "/login";
+});

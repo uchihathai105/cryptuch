@@ -80,6 +80,19 @@ Funding and open interest are not replayed, and past results do not guarantee fu
 
 `config.local.json` stays on your Mac. Keep the bot token private.
 
+## Password login (optional)
+
+Off by default, which is fine when the app only runs on your own computer. Turn it on before you put the app
+on a server or open it to other devices:
+
+- Environment variable: `ADVISOR_PASSWORD='your long password' bash run.sh`
+- or add `"password": "your long password"` to `config.local.json`.
+
+With a password set, every page and API call needs a login; a successful login lasts 30 days on that browser
+(**Log out** is in the page footer). Five wrong passwords in 10 minutes lock that address out for 10 minutes.
+Changing the password logs every device out. It is a single shared password, so use a long one and serve the app
+over HTTPS when it is reachable from the internet.
+
 ## Settings and rules
 
 - Account size, risk per trade (default 1%), max leverage (default 5x), max position size and watchlist:

@@ -7,12 +7,12 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import engine, store, telegram
+from . import auth, engine, store, telegram
 from .service import Advisor, clean, next_refresh_at
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -42,7 +42,23 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="Crypto Trading Advisor", lifespan=lifespan)
+app.middleware("http")(auth.guard)   # no-op unless a password is set (see app/auth.py)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+@app.get("/login")
+def login_page():
+    return auth.login_page()
+
+
+@app.post("/login")
+async def login(request: Request):
+    return await auth.login(request)
+
+
+@app.post("/logout")
+def logout():
+    return auth.logout()
 
 
 @app.get("/")
@@ -72,7 +88,7 @@ def state():
         "track_record": store.track_record(), "settings": settings,
         "telegram": telegram.configured(), "rules_version": C.RULES_VERSION,
         "used_weight": s.get("used_weight", {}),
-        "screener": s["screener"],
+        "screener": s["screener"], "auth": auth.enabled(),
     }))
 
 
