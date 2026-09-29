@@ -52,6 +52,14 @@ GitHub's own `schedule:` trigger ran these workflows only about once every 4–5
 
 Each job sends `POST https://api.github.com/repos/uchihathai105/cryptuch/actions/workflows/<file>/dispatches` with body `{"ref":"main"}` and headers `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Content-Type: application/json` and `Authorization: Bearer <token>`. The token is a fine-grained personal access token limited to this repository with **Actions: Read and write**. If the reports stop, check that the token has not been revoked and that the jobs are still enabled on cron-job.org.
 
+## Trading advisor dashboard (`advisor/`)
+
+A separate app that runs on your own Mac rather than on GitHub Actions. Every 15 minutes it scores the
+top 10 coins by 24h volume, the top 10 gainers and a watchlist, and gives day-trade calls for spot
+(Buy / Exit / Wait) and USDT-M futures (Long / Short / Wait) on 4h / 1h / 15m candles, with entry zone,
+stop-loss, targets, position size and a track record, plus long-term Accumulate / Hold / Reduce ratings.
+Alerts go to Telegram. See [`advisor/README.md`](advisor/README.md) to start it.
+
 ## Run it
 
 - Automatically: see Scheduling above.
