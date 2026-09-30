@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.1 (2026-09-29)"
+RULES_VERSION = "1.2 (2026-09-30)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -36,8 +36,8 @@ EXCLUDED_SUFFIXES = ("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT")
 
 # ---------------------------------------------------------------- Timeframes (URS section 4)
 DAY_TRADE = {"direction": "4h", "setup": "1h", "entry": "15m"}
-CANDLE_LIMITS = {"15m": 200, "1h": 200, "4h": 200, "1d": 400, "1w": 104}  # 1d: a full year + margin
-INTERVAL_MINUTES = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
+CANDLE_LIMITS = {"1m": 180, "5m": 300, "15m": 200, "1h": 200, "4h": 200, "1d": 400, "1w": 104}  # 1d: a full year + margin; 1m/5m: Watch tab
+INTERVAL_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
 
 # ---------------------------------------------------------------- Indicators
 EMA_FAST, EMA_SLOW = 20, 50
@@ -87,6 +87,41 @@ SCREEN_WEIGHTS = {
     "above_sma50": 20, "sma50_rising": 15, "higher_low": 20, "beats_btc": 15,
     "volume_returning": 10, "rsi_ok": 10, "not_extended": 10,
 }
+
+# ---------------------------------------------------------------- Watch tab (v1.2): volatile coins you type in
+# Every watched coin always shows a side: Long/Short on futures, Buy/Sell on spot (same direction).
+# A trend score from -100 (strong down) to +100 (strong up) picks the side; its size gives the strength.
+WATCH_REFRESH_MINUTES = 5          # analysis runs 5 s after every 5m candle close
+WATCH_MAX_COINS = 20               # keeps Binance request weight low
+WATCH_MIN_CANDLES = 120            # 5m candles needed before a coin can be scored (10 hours)
+WATCH_EMA_FAST, WATCH_EMA_SLOW = 9, 21
+WATCH_ADX_LEN = 14
+WATCH_ADX_RANGE_MAX = 20           # ADX at or below this = ranging: mean-reversion rules
+WATCH_ADX_TREND_MIN = 25           # ADX at or above this = trending: trend-following rules (blend in between)
+WATCH_POS_WINDOWS = (48, 288)      # 5m candles for the 4h and 24h range used for "position in range"
+# Component weights (each component is scaled -1..+1, weights add up to 100 in each regime)
+WATCH_WEIGHTS_TREND = {"ema": 30, "macd": 20, "rsi": 15, "position": 10, "volume": 10, "htf": 15}
+WATCH_WEIGHTS_RANGE = {"position": 35, "rsi": 25, "macd": 15, "ema": 5, "volume": 10, "htf": 10}
+WATCH_FLIP_THRESHOLD = 10          # the side only changes once the score passes this on the other side
+WATCH_MIN_HOLD_BARS = 3            # 5m candles a side is kept before it may flip (15 minutes)
+WATCH_STRONG, WATCH_MEDIUM = 50, 25   # |score| >= 50 Strong, >= 25 Medium, else Weak
+# Levels from ATR 5m: R = max(stop ATR x ATR, min stop %); T1 and T2 are multiples of R
+WATCH_STOP_ATR = 1.0
+WATCH_MIN_STOP_PCT = 0.3
+WATCH_T1_R, WATCH_T2_R = 1.0, 2.0
+# Signal life cycle: scored at 1 h (the official result), followed until 2 h, stop and targets never moved
+WATCH_EXPIRE_MIN = 60
+WATCH_MAX_TRACK_MIN = 120
+WATCH_REOPEN_COOLDOWN_MIN = 15     # after a signal ends with the side unchanged, wait before opening the next
+# Costs per round trip, in percent of the entry price (subtracted from every result)
+WATCH_FEE_PCT = {"futures": 0.10, "spot": 0.20}
+WATCH_SLIPPAGE_PCT = 0.10          # raise for thin coins
+# Evaluation
+WATCH_MIN_SAMPLES = 30             # fewer signals than this in a group = "not enough data"
+WATCH_QUALITY_WINDOW, WATCH_QUALITY_MIN = 50, 20    # banner when the last 50 signals average below 0R
+WATCH_COIN_WINDOW, WATCH_COIN_MIN = 20, 10          # a coin averaging below 0R over its last 20 is shown as Weak
+WATCH_SWING_PCT = 1.5              # a reversal counts once price moves this % against the last extreme (24h)
+WATCH_ALERT_MIN_STRENGTH = "Strong"  # Telegram alert when a side flips at this strength or higher; None = off
 
 # ---------------------------------------------------------------- Risk defaults (URS F17, F18)
 DEFAULT_SETTINGS = {

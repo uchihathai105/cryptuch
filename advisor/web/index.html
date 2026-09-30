@@ -26,6 +26,7 @@
   <button role="tab" data-tab="day" class="tab active" type="button">Day trade</button>
   <button role="tab" data-tab="long" class="tab" type="button">Long term</button>
   <button role="tab" data-tab="screen" class="tab" type="button">Altcoin screener</button>
+  <button role="tab" data-tab="watch" class="tab" type="button">Watch <span id="watchCount" class="count"></span></button>
   <button role="tab" data-tab="active" class="tab" type="button">Active calls <span id="activeCount" class="count"></span></button>
   <button role="tab" data-tab="journal" class="tab" type="button">Journal</button>
   <button role="tab" data-tab="settings" class="tab" type="button">Settings</button>
@@ -91,6 +92,52 @@
           <th>Coin</th><th>Stage</th><th class="num">Score</th><th class="num">Price</th>
           <th class="num">From 1y high</th><th class="num">From 1y low</th><th class="num">30d vs BTC</th>
           <th class="num">Volume trend</th><th>Buy-in zone</th><th class="num">Wrong below</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Watch: volatile coins you type in -->
+  <section id="tab-watch" class="panel" hidden>
+    <div class="section-head">
+      <h2>Watch: coins with big swings</h2>
+      <p class="hint">Type any Binance USDT coin. Each one always shows a side: <b>Long / Short</b> on futures and <b>Buy / Sell</b> on spot (Sell means sell if you hold it, or stay out). The side comes from a trend score (−100 to +100) on 5-minute candles. Ranging coins are traded against the edge of their range, trending coins with the trend. Every side change is graded so you can see whether the rules really work.</p>
+    </div>
+    <div id="watchBanner" class="banner warn" hidden></div>
+    <form id="watchForm" class="inline watch-add">
+      <input id="watchSym" placeholder="Add coin, e.g. PEPE" aria-label="Coin to watch" autocomplete="off">
+      <button class="btn" type="submit">Add</button>
+    </form>
+    <p id="watchMsg" class="hint" hidden></p>
+    <p id="watchStatus" class="hint"></p>
+    <div class="table-wrap">
+      <table class="grid" id="watchTable">
+        <thead><tr>
+          <th>Coin</th><th class="num">Price</th><th class="num">24h</th>
+          <th>Futures</th><th>Spot</th><th>Score</th><th>Market</th>
+          <th class="num">Range 1h / 24h</th><th class="num">Reversals 24h</th>
+          <th>Side since</th><th>Signal</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="section-head">
+      <h2>Do the signals work?</h2>
+      <p class="hint">Every side change is a prediction with a stop and two targets from the 5m ATR (stop 1 ATR; T1 1R takes half; T2 2R). The <b>official result is at 1 hour</b>. A signal still open then is followed until 2 hours with the same stop and targets, which are never moved. Results are in R after fees and slippage. A group needs at least <span id="watchMin">30</span> signals before its numbers mean anything.</p>
+    </div>
+    <div id="watchKpis" class="kpis"></div>
+    <div id="watchGroups" class="watch-groups"></div>
+
+    <div class="section-head">
+      <h2>Recent signals</h2>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="watchHistory">
+        <thead><tr>
+          <th>Opened</th><th>Coin</th><th>Side</th><th>Strength</th><th class="num">Score</th>
+          <th class="num">1 h result</th><th class="num">Final</th><th class="wide">Outcome</th>
         </tr></thead>
         <tbody></tbody>
       </table>

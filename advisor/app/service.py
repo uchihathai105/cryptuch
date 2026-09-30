@@ -35,9 +35,9 @@ def clean(o):
     return o
 
 
-def next_refresh_at(now: float | None = None) -> float:
+def next_refresh_at(now: float | None = None, minutes: int | None = None) -> float:
     now = now or time.time()
-    step = C.REFRESH_MINUTES * 60
+    step = (minutes or C.REFRESH_MINUTES) * 60
     return (math.floor(now / step) + 1) * step + C.REFRESH_DELAY_SECONDS
 
 

@@ -12,8 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import auth, engine, store, telegram
+from . import auth, engine, store, telegram, watch
 from .service import Advisor, clean, next_refresh_at
+from .watcher import Watcher, normalise
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)  # no line per Binance request
@@ -21,6 +22,7 @@ log = logging.getLogger("main")
 WEB = Path(__file__).resolve().parent.parent / "web"
 
 advisor = Advisor()
+watcher = Watcher(advisor)
 
 
 async def scheduler():
@@ -33,11 +35,22 @@ async def scheduler():
         await advisor.refresh()
 
 
+async def watch_scheduler():
+    """Watch tab: analyse on start, then ~5 seconds after every 5-minute candle close."""
+    await watcher.refresh()
+    while True:
+        wait = max(1.0, next_refresh_at(minutes=C.WATCH_REFRESH_MINUTES) - time.time())
+        watcher.state["next_refresh"] = time.time() + wait
+        await asyncio.sleep(wait)
+        await watcher.refresh()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(_app):
-    task = asyncio.create_task(scheduler())
+    tasks = [asyncio.create_task(scheduler()), asyncio.create_task(watch_scheduler())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
     await advisor.api.close()
 
 
@@ -137,6 +150,61 @@ async def refresh_now():
 @app.get("/api/calls/history")
 def call_history():
     return clean(store.closed_calls())
+
+
+# ---------------------------------------------------------------- Watch tab
+def _watch_payload() -> dict:
+    w = watcher.state
+    symbols = store.watch_coins()
+    coins = [w["coins"].get(s) or {"symbol": s, "base": s[:-4], "pending": True,
+                                   "note": "Waiting for the first analysis…"} for s in symbols]
+    rows = store.watch_all_signals()
+    for r in rows:
+        r["mirror"] = r.get("mirror")
+    return clean({
+        "now": time.time(), "coins": coins, "last_refresh": w["last_refresh"], "last_error": w["last_error"],
+        "refreshing": w["refreshing"], "next_refresh": w["next_refresh"], "banner": w["banner"],
+        "max_coins": C.WATCH_MAX_COINS, "performance": watch.performance(rows),
+        "settings": {"stop_atr": C.WATCH_STOP_ATR, "t1_r": C.WATCH_T1_R, "t2_r": C.WATCH_T2_R,
+                     "expire_min": C.WATCH_EXPIRE_MIN, "max_track_min": C.WATCH_MAX_TRACK_MIN,
+                     "flip_threshold": C.WATCH_FLIP_THRESHOLD},
+    })
+
+
+@app.get("/api/watch")
+def watch_state():
+    return JSONResponse(_watch_payload())
+
+
+@app.post("/api/watch")
+async def watch_add(body: dict):
+    try:
+        sym = normalise(body.get("symbol", ""))
+        coins = store.watch_coins()
+        if sym in coins:
+            raise ValueError(f"{sym} is already being watched")
+        if len(coins) >= C.WATCH_MAX_COINS:
+            raise ValueError(f"At most {C.WATCH_MAX_COINS} coins can be watched (keeps Binance request weight low)")
+        await watcher.validate(sym)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Could not check {body.get('symbol', '')} on Binance: {e}")
+    store.watch_add(sym)
+    asyncio.create_task(watcher.refresh())
+    return JSONResponse(_watch_payload())
+
+
+@app.delete("/api/watch/{symbol}")
+def watch_remove(symbol: str):
+    store.watch_remove(symbol.upper(), int(time.time() * 1000))
+    watcher.state["coins"].pop(symbol.upper(), None)
+    return JSONResponse(_watch_payload())
+
+
+@app.get("/api/watch/history")
+def watch_history(limit: int = 100):
+    return clean(store.watch_history(min(max(limit, 1), 500)))
 
 
 @app.get("/api/journal")

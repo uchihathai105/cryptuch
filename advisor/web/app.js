@@ -9,6 +9,8 @@
   let list = "top_volume";
   let view = { symbol: null, market: "futures", tf: "1h" };
   let chart = null;
+  let W = null;            // last /api/watch
+  const wOpen = new Set(); // Watch rows that are expanded
 
   // ------------------------------------------------------------ formatting
   function px(x) {
@@ -34,7 +36,7 @@
   const clock = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateTime = (ms) => new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const TONE = { Recovering: "good", Basing: "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
+  const TONE = { Recovering: "good", Basing: "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Sell: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
   function pill(label, conf) {
     const tone = TONE[label] ?? "";
     const c = conf != null && label !== "Wait" ? `<span class="conf">${conf}</span>` : "";
@@ -52,6 +54,7 @@
   async function load() {
     try {
       S = await api("/api/state");
+      try { W = await api("/api/watch"); } catch (e) { /* the other tabs do not depend on Watch data */ }
       render();
     } catch (e) {
       showError(`Can't reach the app server. Is it still running? (${e.message})`);
@@ -200,6 +203,133 @@
       </dl>
       <ul class="checks">${r.checks.map((k) => `<li class="${k.passed ? "ok" : "no"}"><span class="ic">${k.passed ? "✓" : "✗"}</span><span><b>${names[k.name]}</b> · ${esc(k.detail)}</span></li>`).join("")}</ul>
       <p class="hint">Price and volume only. Check the project's token unlocks and news before buying.</p></div>`;
+  }
+
+
+  // ------------------------------------------------------------ watch (coins you type in)
+  const wAge = (ms) => { const m = Math.max(0, Math.floor((Date.now() - ms) / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
+  const rp = (x) => (x == null || !isFinite(x) ? "–" : `${x.toFixed(1)}%`);
+  const sr = (x, d = 2) => (x == null || !isFinite(x) ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(d)}R`);
+  const sideName = (side, market) => (market === "futures" ? (side === "long" ? "Long" : "Short") : (side === "long" ? "Buy" : "Sell"));
+  const WNAMES = { ema: "EMA 9 / 21 (5m)", macd: "MACD (5m)", rsi: "RSI 14 (5m)", position: "Position in 4h / 24h range", volume: "Volume pressure", htf: "1h trend" };
+  function scoreBar(v) {
+    const w = Math.min(50, Math.abs(v) / 2);
+    const style = v >= 0 ? `left:50%;width:${w}%` : `left:${50 - w}%;width:${w}%`;
+    return `<div class="score"><b class="${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(0)}</b><div class="track"><i class="${v >= 0 ? "up" : "down"}" style="${style}"></i></div></div>`;
+  }
+  function sidePill(c, market) {
+    const label = market === "futures" ? c.futures_label : c.spot_label;
+    return label ? `${pill(label)}<span class="tag${c.low_reliability ? " warn" : ""}">${esc(c.strength)}${c.low_reliability ? " · low reliability" : ""}</span>` : `<span class="hint">not listed</span>`;
+  }
+  function signalCell(c) {
+    const sg = c.signal;
+    if (!sg) return `<span class="hint">none open (cooling down)</span>`;
+    const st = sg.status === "tracking" ? `Followed on ${wAge(sg.created_at)}` : `Open ${wAge(sg.created_at)}`;
+    return `${esc(st)} <span class="${cls(sg.now_r)} mono">${sr(sg.now_r)}</span>${sg.t1_hit ? ` <span class="tag">T1 ✓</span>` : ""}`;
+  }
+  function watchDetail(c) {
+    const sg = c.signal;
+    const lv = sg ? `<div class="card"><h3>Current signal · ${esc(sideName(sg.side, c.market))}</h3><dl class="levels">
+        <dt>Entry</dt><dd>${px(sg.entry)}</dd>
+        <dt>Stop-loss</dt><dd>${px(sg.stop)}${sg.t1_hit ? " → entry" : ""}</dd>
+        <dt>Target 1 (take half)</dt><dd>${px(sg.t1)}${sg.t1_hit ? " ✓" : ""}</dd>
+        <dt>Target 2</dt><dd>${px(sg.t2)}</dd>
+        <dt>Now</dt><dd class="${cls(sg.now_r)}">${sr(sg.now_r)}</dd>
+        ${sg.result_1h_r != null ? `<dt>Result at 1 h</dt><dd class="${cls(sg.result_1h_r)}">${sr(sg.result_1h_r)}</dd>` : ""}
+        <dt>Best / worst so far</dt><dd>+${(sg.mfe_r || 0).toFixed(2)}R / −${(sg.mae_r || 0).toFixed(2)}R</dd></dl>
+        <p class="small-note">Stop and targets never move. Stopped out = −1R, then fees and slippage on top.</p></div>` : "";
+    const comps = Object.keys(WNAMES).map((k) => {
+      const v = (c.contrib || {})[k] || 0;
+      return `<li class="${v > 0.05 ? "ok" : v < -0.05 ? "no" : "na"}"><span class="ic">${v > 0.05 ? "+" : v < -0.05 ? "−" : "·"}</span><span><b>${WNAMES[k]}</b> · ${v > 0 ? "+" : ""}${v.toFixed(1)}</span></li>`;
+    }).join("");
+    const move = c.since_price ? ((c.price / c.since_price - 1) * 100) : null;
+    return `<div class="watchdet">${lv}
+      <div class="card"><h3>Score ${c.score > 0 ? "+" : ""}${c.score.toFixed(0)}</h3>
+        <ul class="checks">${comps}</ul>
+        <p class="small-note">${c.state === "range" ? "Ranging market (ADX " + c.adx + "): the edge of the range is traded against, near the low leans Buy, near the high leans Sell." : "Trending market (ADX " + c.adx + "): the trend is followed."}</p></div>
+      <div class="card"><h3>Context</h3><dl class="levels">
+        <dt>RSI 14 (5m)</dt><dd>${c.rsi}</dd>
+        <dt>Volume vs average</dt><dd>${c.vol_ratio.toFixed(2)}×</dd>
+        <dt>Position in range</dt><dd>${c.pos_in_range}% <small>(0 = low, 100 = high)</small></dd>
+        <dt>1h trend</dt><dd>${esc(c.htf)}</dd>
+        <dt>ATR 5m</dt><dd>${(c.atr / c.price * 100).toFixed(2)}% of price</dd>
+        <dt>Range 1h / 4h / 24h</dt><dd>${rp(c.range_1h)} / ${rp(c.range_4h)} / ${rp(c.range_24h)}</dd>
+        <dt>1h range vs normal</dt><dd>${c.range_ratio == null ? "–" : c.range_ratio.toFixed(1) + "×"}</dd>
+        <dt>Side since</dt><dd>${dateTime(c.since)} <small>at ${px(c.since_price)} (${pct(move)})</small></dd></dl></div></div>`;
+  }
+  function groupTable(title, rows) {
+    if (!rows || !rows.length) return "";
+    const min = W.performance.min_samples;
+    const body = rows.map((r) => `<tr class="${r.enough ? "" : "thin"}"><td>${esc(r.key)}${r.enough ? "" : ` <span class="tag">not enough data</span>`}</td>
+      <td class="num">${r.n}</td><td class="num">${r.win_rate}%</td><td class="num ${cls(r.avg_r)}">${sr(r.avg_r)}</td>
+      <td class="num">${r.profit_factor ?? "–"}</td><td class="num">${r.max_dd_r}R</td></tr>`).join("");
+    return `<div class="table-wrap" title="Groups below ${min} signals are greyed out"><table class="grid"><thead><tr><th>${esc(title)}</th><th class="num">Signals</th><th class="num">Win rate</th><th class="num">Avg R</th><th class="num">Profit factor</th><th class="num">Max drawdown</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+  function renderWatch() {
+    if (!W) return;
+    const rows = W.coins || [];
+    $("#watchCount").textContent = rows.length ? `(${rows.length})` : "";
+    const b = $("#watchBanner");
+    b.hidden = !W.banner;
+    b.textContent = W.banner || "";
+    $("#watchStatus").textContent = (rows.length ? `${rows.length} of ${W.max_coins} coins · ` : "") +
+      (W.last_refresh ? `updated ${clock(W.last_refresh)}, next ${clock(W.next_refresh)}` : "waiting for the first analysis…") +
+      (W.last_error ? ` · last refresh failed: ${W.last_error}` : "");
+    $("#watchMin").textContent = W.performance.min_samples;
+
+    const body = $("#watchTable tbody");
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="12" class="wide">No coins yet. Type a coin above (for example PEPE) and it is analysed within seconds.</td></tr>`;
+    } else {
+      body.innerHTML = rows.map((c) => {
+        const del = `<button class="btn ghost small" type="button" data-wdel="${esc(c.symbol)}" title="Stop watching ${esc(c.base)}" aria-label="Stop watching ${esc(c.base)}">×</button>`;
+        if (c.pending) return `<tr><td class="coin-cell">${esc(c.base)}</td><td colspan="10" class="wide">${esc(c.note || "Waiting for the first analysis…")}</td><td>${del}</td></tr>`;
+        const open = wOpen.has(c.symbol);
+        return `<tr class="click" data-wrow="${esc(c.symbol)}">
+          <td class="coin-cell">${esc(c.base)}<span class="tag">${c.futures_listed ? "futures + spot" : "spot only"}</span></td>
+          <td class="num">${px(c.price)}</td><td class="num ${cls(c.pct24)}">${pct(c.pct24)}</td>
+          <td>${sidePill(c, "futures")}</td><td>${sidePill(c, "spot")}</td>
+          <td>${scoreBar(c.score)}</td>
+          <td>${c.state === "range" ? "Ranging" : "Trending"}<span class="tag">ADX ${c.adx}</span></td>
+          <td class="num" title="1h range vs its normal size: ${c.range_ratio == null ? "–" : c.range_ratio.toFixed(1) + "×"}">${rp(c.range_1h)} / ${rp(c.range_24h)}${c.range_ratio ? ` <small>${c.range_ratio.toFixed(1)}×</small>` : ""}</td>
+          <td class="num">${c.swings_24h}</td>
+          <td>${wAge(c.since)} ago</td><td>${signalCell(c)}</td><td>${del}</td></tr>
+          ${open ? `<tr class="det"><td colspan="12">${watchDetail(c)}</td></tr>` : ""}`;
+      }).join("");
+    }
+
+    const P = W.performance, o = P.official_1h, f = P.final_2h, m = P.mirror_1h;
+    if (!o.n) {
+      $("#watchKpis").innerHTML = `<div class="empty">No graded signals yet. A signal gets its official result 1 hour after it opens (sooner if a target or the stop is hit first).</div>`;
+    } else {
+      $("#watchKpis").innerHTML =
+        (o.enough ? "" : `<p class="hint" style="width:100%;margin:0">Only ${o.n} of ${P.min_samples} signals so far: too early to judge the rules.</p>`) +
+        kpi(o.n, "signals graded at 1 h") + kpi(`${o.win_rate}%`, "win rate (1 h)") + kpi(sr(o.avg_r), "average per signal") +
+        kpi(o.profit_factor ?? "–", "profit factor") + kpi(`${o.max_dd_r}R`, "max drawdown") +
+        kpi(m.n ? sr(m.avg_r) : "–", "average of the opposite trade") + kpi(f.n ? sr(f.avg_r) : "–", "average if followed to 2 h") +
+        kpi(P.late_wins, "late wins (target after 1 h)");
+    }
+    const order = { Strong: 0, Medium: 1, Weak: 2 };
+    $("#watchGroups").innerHTML = o.n
+      ? groupTable("Side", P.by_side) + groupTable("Strength", [...P.by_strength].sort((a, b) => order[a.key] - order[b.key])) +
+        groupTable("Market type", P.by_state) + groupTable("Coin", P.by_coin) +
+        groupTable("Time of day (your time)", P.by_hour) + groupTable("Rules version", P.by_version)
+      : "";
+    if (!$("#tab-watch").hidden) loadWatchHistory();
+  }
+  let wHistBusy = false;
+  async function loadWatchHistory() {
+    if (wHistBusy) return;
+    wHistBusy = true;
+    try {
+      const rows = await api("/api/watch/history?limit=50");
+      $("#watchHistory tbody").innerHTML = rows.map((r) => `<tr>
+        <td>${dateTime(r.created_at)}</td><td class="coin-cell">${esc(r.symbol.replace(/USDT$/, ""))}</td>
+        <td>${pill(sideName(r.side, r.market))}</td><td>${esc(r.strength)}</td><td class="num">${r.score > 0 ? "+" : ""}${Number(r.score).toFixed(0)}</td>
+        <td class="num ${cls(r.result_1h_r)}">${sr(r.result_1h_r)}</td><td class="num ${cls(r.result_r)}">${sr(r.result_r)}</td>
+        <td class="wide">${esc(r.outcome || "")}${r.late_win ? " · late win" : ""}${r.expired_at && r.final_status !== "expired" ? " · followed past 1 h" : ""}</td></tr>`).join("")
+        || `<tr><td colspan="8" class="wide">Nothing closed yet.</td></tr>`;
+    } catch (e) { /* keep the previous table */ } finally { wHistBusy = false; }
   }
 
   // ------------------------------------------------------------ active calls + record
@@ -412,6 +542,7 @@
     renderDay();
     renderLong();
     renderScreen();
+    renderWatch();
     renderActive();
     renderSettings(false);
     if (view.symbol && !$("#coinView").hidden) renderSide(S.coins[view.symbol]);
@@ -422,6 +553,7 @@
     $$(".tab").forEach((x) => x.classList.toggle("active", x === t));
     $$(".panel").forEach((p) => (p.hidden = p.id !== `tab-${t.dataset.tab}`));
     if (t.dataset.tab === "active") renderHistory().catch(() => {});
+    if (t.dataset.tab === "watch") { loadWatchHistory(); }
     if (t.dataset.tab === "journal") loadJournal().catch(() => {});
     if (t.dataset.tab === "settings" && S) renderSettings(true);
   }));
@@ -486,6 +618,39 @@
   $("#jTable").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-del]"); if (!b) return;
     renderJournal(await api(`/api/journal/${b.dataset.del}`, { method: "DELETE" }));
+  });
+  $("#watchForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = $("#watchSym"), msg = $("#watchMsg"), v = input.value.trim();
+    if (!v) return;
+    const btn = e.target.querySelector("button");
+    btn.disabled = true;
+    msg.hidden = true;
+    try {
+      W = await api("/api/watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: v }) });
+      input.value = "";
+      renderWatch();
+      setTimeout(load, 4000); setTimeout(load, 12000);
+    } catch (err) {
+      let text = err.message;
+      try { text = JSON.parse(text.replace(/^\d+\s/, "")).detail || text; } catch (_) { /* plain text error */ }
+      msg.textContent = text;
+      msg.hidden = false;
+    } finally { btn.disabled = false; }
+  });
+  $("#watchTable").addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-wdel]");
+    if (del) {
+      W = await api(`/api/watch/${encodeURIComponent(del.dataset.wdel)}`, { method: "DELETE" });
+      wOpen.delete(del.dataset.wdel);
+      renderWatch();
+      return;
+    }
+    const row = e.target.closest("[data-wrow]");
+    if (!row) return;
+    const sym = row.dataset.wrow;
+    wOpen.has(sym) ? wOpen.delete(sym) : wOpen.add(sym);
+    renderWatch();
   });
   $("#j-date").valueAsDate = new Date();
 

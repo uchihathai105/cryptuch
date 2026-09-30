@@ -207,3 +207,21 @@ input, select { background: var(--bg); border: 1px solid var(--line); border-rad
   .sheet-inner { border-radius: 0; min-height: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Watch tab */
+.watch-add { max-width: 420px; margin-top: 12px; }
+.score { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.score b { font-family: var(--mono); font-weight: 600; width: 38px; text-align: right; }
+.score .track { position: relative; flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; }
+.score .track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+.score .track i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.score .track i.up { background: var(--good); } .score .track i.down { background: var(--bad); }
+.tag.warn { color: var(--warn); }
+.grid td .tag { font-size: 11px; color: var(--muted); margin-left: 6px; }
+.grid tr.det td { background: var(--surface-2); white-space: normal; }
+.watchdet { position: sticky; left: 0; width: min(1100px, calc(100vw - 34px)); display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; padding: 4px 0; }
+.watchdet .card { background: var(--surface); padding: 12px 14px; gap: 8px; }
+.watch-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 12px; margin-top: 12px; }
+.grid tr.thin td { color: var(--muted); }
+.grid tr.thin td:first-child { font-style: italic; }
+.small-note { font-size: 12px; color: var(--muted); }

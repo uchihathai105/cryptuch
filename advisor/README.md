@@ -9,6 +9,9 @@ A personal dashboard that reads Binance market data every 15 minutes and gives r
 - **Altcoin screener** (daily): liquid altcoins still 50%+ below their 1-year high, graded Recovering or
   Basing, with a buy-in zone and the price that would prove the idea wrong. It sees only price and volume,
   so check each project (token unlocks, news) before buying.
+- **Watch** (5-minute candles): type in volatile coins; each always shows Long/Short (futures) and Buy/Sell (spot)
+  from a trend score, and every side change is graded at 1 hour (followed to 2 hours) so you can see whether the
+  rules work. Tunable values are in `app/config.py` under "Watch tab".
 - Active calls are followed until a target, the stop or an exit rule ends them; results build a track record.
 - Optional Telegram alerts for new calls, targets, exits and long-term rating changes.
 
