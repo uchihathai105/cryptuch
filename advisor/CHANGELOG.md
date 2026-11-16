@@ -3,6 +3,12 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.2.1 — 16 Nov 2026
+- Altcoin screener: new **Buy?** column with a verdict per coin. **Buy** = stage Recovering, score ≥ `SCREEN_BUY_MIN_SCORE` (70)
+  and price at most `SCREEN_BUY_MAX_ABOVE_ZONE` (8%) above the top of the buy-in zone. **Wait for pullback** = Recovering
+  with a good score but price has run above the zone. **Wait** = Basing, or Recovering with a lower score.
+  Stage, score and ranking are unchanged. Price and volume only: check unlocks and news before buying.
+
 ## 1.2 — 30 Sep 2026
 - New **Watch** tab for volatile coins you type in (up to 20). Day-trade rules (`engine.py`) are unchanged; the
   version is bumped because there is a new rule set with its own track record.

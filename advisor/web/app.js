@@ -36,7 +36,7 @@
   const clock = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateTime = (ms) => new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const TONE = { Recovering: "good", Basing: "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Sell: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
+  const TONE = { Recovering: "good", Basing: "warn", "Wait for pullback": "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Sell: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
   function pill(label, conf) {
     const tone = TONE[label] ?? "";
     const c = conf != null && label !== "Wait" ? `<span class="conf">${conf}</span>` : "";
@@ -178,12 +178,12 @@
       const msg = sc.error ? `Scan failed: ${esc(sc.error)}` : sc.running || !sc.updated
         ? "Scanning every liquid altcoin on Binance… the first scan takes about a minute."
         : "No altcoin passes the rules today.";
-      body.innerHTML = `<tr><td colspan="10" class="wide">${msg}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="11" class="wide">${msg}</td></tr>`;
       return;
     }
     body.innerHTML = rows.map((r) => `<tr class="click" data-sym="${esc(r.symbol)}" data-mkt="spot" data-tf="1d" title="${esc(r.note)}">
       <td class="coin-cell">${esc(r.base)}</td><td>${pill(r.stage)}</td>
-      <td class="num">${r.score}</td><td class="num">${px(r.price)}</td>
+      <td class="num">${r.score}</td><td title="${esc(r.verdict_reason || "")}">${pill(r.verdict || "Wait")}</td><td class="num">${px(r.price)}</td>
       <td class="num down">${pct(r.drawdown, 0)}</td><td class="num">${pct(r.up_from_low, 0)}</td>
       <td class="num ${cls(r.rs_btc30)}">${r.rs_btc30 == null ? "–" : `${r.rs_btc30 > 0 ? "+" : ""}${r.rs_btc30.toFixed(1)} pts`}</td>
       <td class="num">${r.vol_ratio.toFixed(2)}×</td>
@@ -194,6 +194,7 @@
     const names = { above_sma50: "Above 50-day", sma50_rising: "50-day rising", higher_low: "Higher low", beats_btc: "Beats BTC (30d)", volume_returning: "Volume returning", rsi_ok: "RSI", not_extended: "Not run up yet" };
     return `<div class="card"><div class="callhead"><h3>Altcoin screener</h3>${pill(r.stage)}</div>
       <p class="reason">${esc(r.note)}</p>
+      <p class="reason"><b>Verdict: ${esc(r.verdict || "Wait")}.</b> ${esc(r.verdict_reason || "")}</p>
       <div><div class="label">Score ${r.score}/100</div><div class="meter"><i style="width:${r.score}%"></i></div></div>
       <dl class="levels">
         <dt>From 1-year high</dt><dd>${pct(r.drawdown, 0)} <small>(${px(r.high1y)})</small></dd>

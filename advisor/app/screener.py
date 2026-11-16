@@ -17,6 +17,21 @@ def _ret(df: pd.DataFrame, days: int):
     return float(df["close"].iloc[-1] / df["close"].iloc[-days - 1] - 1) * 100
 
 
+def _verdict(stage: str, score: int, close: float, ema20: float, sma50: float, recent_low: float) -> tuple[str, str]:
+    """Buy / Wait for pullback / Wait. Rules only, not advice: price and volume cannot see unlocks or news."""
+    if stage != "Recovering":
+        return "Wait", f"Stage is {stage}: the uptrend is not confirmed yet."
+    if score < C.SCREEN_BUY_MIN_SCORE:
+        return "Wait", f"Trend is up but score {score} is below {C.SCREEN_BUY_MIN_SCORE}: too many checks still fail."
+    zone_top = min(max(ema20, sma50), close)
+    above = (close / zone_top - 1) * 100 if zone_top > 0 else 0.0
+    if above > C.SCREEN_BUY_MAX_ABOVE_ZONE:
+        return "Wait for pullback", (f"Price is {above:.0f}% above the buy-in zone (limit {C.SCREEN_BUY_MAX_ABOVE_ZONE:.0f}%): "
+                                     f"buying here has a poor stop distance.")
+    return "Buy", (f"Recovering, score {score}, price within {above:.0f}% of the buy-in zone. Buy gradually; "
+                   f"wrong on a daily close below {fmt(recent_low)}. Check the project first.")
+
+
 def screen_coin(symbol: str, daily: pd.DataFrame, btc_daily: pd.DataFrame | None,
                 quote_volume: float, pct24: float) -> dict | None:
     """Return a result for coins far enough below their 1-year high, else None."""
@@ -77,6 +92,7 @@ def screen_coin(symbol: str, daily: pd.DataFrame, btc_daily: pd.DataFrame | None
         "invalidation_pct": (recent_low / close - 1) * 100,
         "checks": [{"name": n, "passed": bool(ok), "detail": t} for n, ok, t in checks],
     }
+    out["verdict"], out["verdict_reason"] = _verdict(stage, score, close, ema20, sma50, recent_low)
     if stage == "Recovering":
         zlo, zhi = sorted([ema20, sma50])
         out["zone"] = [zlo, min(zhi, close)] if zlo < close else None

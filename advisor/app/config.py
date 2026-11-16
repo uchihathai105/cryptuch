@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.2 (2026-09-30)"
+RULES_VERSION = "1.2.1 (2026-11-16)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -83,6 +83,9 @@ SCREEN_MAX_UP_FROM_LOW = 100.0        # not already doubled off its 1-year low
 SCREEN_RSI_RANGE = (45, 70)           # momentum turning up, not overheated
 SCREEN_VOLUME_RATIO = 1.2             # 20-day average volume vs 90-day average
 SCREEN_LIST_SIZE = 25
+# "Should I buy?" verdict (v1.2.1): Buy only when Recovering, score high enough, and price still near the buy-in zone
+SCREEN_BUY_MIN_SCORE = 70
+SCREEN_BUY_MAX_ABOVE_ZONE = 8.0       # % the price may sit above the top of the buy-in zone
 SCREEN_WEIGHTS = {
     "above_sma50": 20, "sma50_rising": 15, "higher_low": 20, "beats_btc": 15,
     "volume_returning": 10, "rsi_ok": 10, "not_extended": 10,
