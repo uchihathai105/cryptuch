@@ -3,6 +3,21 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.2.4 — 16 Nov 2026
+- New **Hours** tab: for each coin, which Vietnam-time hours carry the most trading volume, how aggressive the buyers are
+  (taker-buy share) and how the price moved, from one year of 1h Binance candles (`HOURLY_DAYS`). Signal rules are unchanged.
+- The server builds the profiles in the background (BTC, watchlist, top-volume, Watch and screener coins, at most
+  `HOURLY_MAX_COINS`; any other USDT pair can be requested on the tab), one coin at a time, and stores only the 24-hour summary in
+  the `hourly_profile` table. Profiles older than `HOURLY_REFRESH_DAYS` (7) are rebuilt. Opening the tab reads the database only.
+- Each hour is labelled with what is scheduled then (Asia / Europe / US sessions, funding at 07:00, 15:00 and 23:00, US data and
+  stock open, FOMC, options expiry). These are labels of coincidence, not proof of cause; US events move by one hour between
+  summer and winter time.
+- Quality guards: volume patterns are shown with a stability score (first vs second half of the period). An hour's average price
+  move is called notable only when |t| >= `HOURLY_NOTABLE_T` (3.0), because 24 hours are tested and most differences are noise.
+- Fixes found while checking the screens in a browser: Journal tag boxes were stacked in a narrow column; the screener's
+  project checklist printed "true" instead of the check name.
+- Tests: `python -m tests.test_hourly`.
+
 ## 1.2.3 — 16 Nov 2026
 - Active calls track record: new **"Why calls win or lose"** review under the track record. Signal rules are unchanged; only
   what is recorded and reported changes.

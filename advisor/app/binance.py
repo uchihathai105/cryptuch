@@ -119,6 +119,28 @@ class Binance:
                                    market="futures")
         return klines_to_frame(data)
 
+    async def history_1h(self, symbol: str, days: int) -> pd.DataFrame:
+        """About `days` days of closed 1h spot candles with quote volume and taker-buy volume (pages of 1000)."""
+        end = int(time.time() * 1000)
+        start = end - days * 86_400_000
+        rows: list = []
+        while start < end:
+            page = await self._get(self.spot_base, "/api/v3/klines",
+                                   {"symbol": symbol, "interval": "1h", "startTime": start, "limit": 1000})
+            if not page:
+                break
+            rows += page
+            nxt = int(page[-1][0]) + 3_600_000
+            if nxt <= start or len(page) < 1000:
+                break
+            start = nxt
+            await asyncio.sleep(config.HOURLY_PAUSE_SECONDS)
+        df = pd.DataFrame(
+            [[int(k[0]), float(k[1]), float(k[4]), float(k[7]), float(k[10]), int(k[6])] for k in rows],
+            columns=["open_time", "open", "close", "quote_volume", "taker_buy_quote", "close_time"])
+        df = df[df["close_time"] < int(time.time() * 1000)]
+        return df.drop_duplicates("open_time").sort_values("open_time").reset_index(drop=True)
+
 
 def klines_to_frame(data: list) -> pd.DataFrame:
     df = pd.DataFrame(

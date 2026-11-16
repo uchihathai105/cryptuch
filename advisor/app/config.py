@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.2.3 (2026-11-16)"
+RULES_VERSION = "1.2.4 (2026-11-16)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -97,6 +97,13 @@ REVIEW_MIN_GROUP = 10                 # groups smaller than this are shown but n
 REVIEW_MIN_ACT = 30                   # below this many closed calls, findings are labelled "too early to act on"
 REVIEW_EDGE_R = 0.3                   # a group is called strong / weak when it differs from the rest by this much R
 CALL_COST_PCT = {"futures": 0.10 + 0.10, "spot": 0.20 + 0.10}   # round-trip fee + slippage, % of entry (same as Watch)
+# Hours tab (v1.2.4): hour-of-day profile in Vietnam time from one year of 1h candles
+HOURLY_DAYS = 365                      # history downloaded per coin
+HOURLY_MIN_DAYS = 60                   # fewer complete days than this: no profile
+HOURLY_NOTABLE_T = 3.0                 # |t| needed before an hour's average move is called notable (24 hours are tested)
+HOURLY_REFRESH_DAYS = 7                # profiles older than this are rebuilt
+HOURLY_PAUSE_SECONDS = 0.6             # between history pages, to stay far below Binance limits
+HOURLY_MAX_COINS = 60
 # Journal tags: mistakes are what the journal adds up the cost of
 JOURNAL_MISTAKE_TAGS = ("Entered early", "Chased the price", "No stop-loss", "Moved the stop", "Position too big",
                         "Revenge trade", "Ignored the app's call")

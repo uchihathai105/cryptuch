@@ -26,6 +26,7 @@
   <button role="tab" data-tab="day" class="tab active" type="button">Day trade</button>
   <button role="tab" data-tab="long" class="tab" type="button">Long term</button>
   <button role="tab" data-tab="screen" class="tab" type="button">Altcoin screener</button>
+  <button role="tab" data-tab="hours" class="tab" type="button">Hours</button>
   <button role="tab" data-tab="watch" class="tab" type="button">Watch <span id="watchCount" class="count"></span></button>
   <button role="tab" data-tab="active" class="tab" type="button">Active calls <span id="activeCount" class="count"></span></button>
   <button role="tab" data-tab="journal" class="tab" type="button">Journal</button>
@@ -96,6 +97,31 @@
         <tbody></tbody>
       </table>
     </div>
+  </section>
+
+  <!-- Hours: when money trades, in Vietnam time -->
+  <section id="tab-hours" class="panel" hidden>
+    <div class="section-head">
+      <h2>Which hours matter (Vietnam time)</h2>
+      <p class="hint">For each coin, built from the last year of 1-hour candles: how much of the day's trading volume happens in each hour, how aggressive the buyers are, and how the price moved. The coin is not trading harder because of a "reason": the labels (Asia, Europe, US, funding, US data) only show what is scheduled at that hour, which is the usual explanation.</p>
+      <p class="hint"><b>Read with care:</b> the busy hours are stable and reliable. Whether a coin tends to rise or fall at a given hour is mostly noise: only hours that stand far out of the noise are flagged, and even those describe the past, not the future. Never trade on the hour alone.</p>
+    </div>
+    <div id="hoursJob" class="hint"></div>
+    <form id="hoursForm" class="inline">
+      <input id="hoursSym" placeholder="Add a coin, e.g. LINKUSDT" aria-label="Coin to build a profile for">
+      <button class="btn" type="submit">Build profile</button>
+      <span id="hoursMsg" class="hint"></span>
+    </form>
+    <div class="table-wrap">
+      <table class="grid" id="hoursTable">
+        <thead><tr>
+          <th>Coin</th><th>Busiest hours (VN)</th><th class="num">Share of day in top 3</th><th>Quietest</th>
+          <th class="num">Pattern stable</th><th>Hour that rose most</th><th>Hour that fell most</th><th class="num">Days</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="hoursDetail"></div>
   </section>
 
   <!-- Watch: volatile coins you type in -->

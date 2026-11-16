@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import auth, engine, journal as journal_stats, review, store, telegram, watch
+from . import auth, engine, hourly, journal as journal_stats, review, store, telegram, watch
 from .service import Advisor, clean, next_refresh_at
 from .watcher import Watcher, normalise
 
@@ -154,6 +154,35 @@ def call_history():
         c["why"] = review.explain(c)
         c["net_r"] = c["result_r"] - review.cost_r(c) if c.get("result_r") is not None and c.get("entry") else None
     return clean(rows)
+
+
+@app.get("/api/hourly")
+def hourly_list():
+    rows = [hourly.summary(r["symbol"], r["profile"], r["computed_at"]) for r in store.hourly_all()
+            if not r["profile"].get("too_short")]
+    rows.sort(key=lambda r: (r["symbol"] != "BTCUSDT", r["symbol"]))
+    return clean({"coins": rows, "job": advisor.state["hourly"]})
+
+
+@app.get("/api/hourly/{symbol}")
+def hourly_detail(symbol: str):
+    r = store.hourly_get(symbol.upper())
+    if not r or r["profile"].get("too_short"):
+        raise HTTPException(404, "No hour-of-day profile for this coin yet")
+    p = r["profile"]
+    return clean({"symbol": r["symbol"], "computed_at": r["computed_at"], "profile": p, "reading": hourly.explain(p)})
+
+
+@app.post("/api/hourly/{symbol}")
+async def hourly_request(symbol: str):
+    """Build the profile of a coin that is not in the automatic list (any Binance USDT pair)."""
+    sym = symbol.upper().strip()
+    if not sym.endswith("USDT") or not sym[:-4].isalnum() or len(sym) > 16:
+        raise HTTPException(400, "Use a Binance USDT pair such as LINKUSDT")
+    if advisor.state["hourly"]["running"]:
+        raise HTTPException(409, "Profiles are being built right now; try again in a few minutes")
+    asyncio.create_task(advisor.run_hourly([sym]))
+    return {"ok": True}
 
 
 @app.get("/api/review")

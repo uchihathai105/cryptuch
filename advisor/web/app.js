@@ -200,7 +200,7 @@
   function projectCard(r) {
     const f = r.fundamentals || {};
     const auto = [
-      ["Dilution from supply", f.flag === "ok" || f.flag === "warn" || f.flag === "bad" ? f.flag !== "bad" : null, f.text || "No supply data."],
+      ["Dilution from supply", f.flag === "ok" ? true : f.flag === "warn" || f.flag === "bad" ? false : null, f.text || "No supply data."],
       ["Market cap / FDV", f.market_cap ? true : null, f.market_cap ? `${bigUsd(f.market_cap)} market cap, ${bigUsd(f.fdv)} fully diluted` : "Not available"],
     ];
     const manual = ["Token unlock dates in the next 3 months", "Team and early-investor vesting", "Listed on several large exchanges",
@@ -209,7 +209,7 @@
     const links = f.links ? [f.links.coingecko && `<a href="${esc(f.links.coingecko)}" target="_blank" rel="noopener">CoinGecko page</a>`,
       f.links.news && `<a href="${esc(f.links.news)}" target="_blank" rel="noopener">Search token unlock news</a>`].filter(Boolean).join(" · ") : "";
     return `<div class="card"><div class="callhead"><h3>Project checklist</h3></div>
-      <ul class="checks">${auto.map((a) => li(...a)).join("")}${manual.map((m) => li(null, m, "check yourself")).join("")}</ul>
+      <ul class="checks">${auto.map((a) => li(a[1], a[0], a[2])).join("")}${manual.map((m) => li(null, m, "check yourself")).join("")}</ul>
       ${links ? `<p class="hint">${links}</p>` : ""}</div>`;
   }
   function screenCard(r) {
@@ -397,7 +397,7 @@
       kpi(f2(o.gross_avg_r), "average, before costs") + kpi(f2(-o.avg_cost_r), "fees + slippage per call") +
       kpi(o.profit_factor == null ? "–" : o.profit_factor.toFixed(2), "profit factor") +
       kpi(`${o.max_drawdown_r.toFixed(1)}R`, "worst drop") + kpi(o.longest_losing_streak, "longest losing run");
-    const tone = { good: "ok", bad: "no", warn: "no", info: "na" }, ic = { good: "✓", bad: "✗", warn: "!", info: "i" };
+    const tone = { good: "ok", bad: "no", warn: "no", info: "" }, ic = { good: "✓", bad: "✗", warn: "!", info: "i" };
     const finds = rv.findings.map((x) => `<li class="${tone[x.tone]}"><span class="ic">${ic[x.tone]}</span><span>${esc(x.text)}</span></li>`).join("");
     const grp = (name, items) => `<h4>${esc(name)}</h4><div class="table-wrap"><table class="grid"><thead><tr><th>Group</th><th class="num">Calls</th><th class="num">Win rate</th><th class="num">Average (net)</th><th class="num">Total (net)</th></tr></thead><tbody>${
       items.map((g) => `<tr><td>${esc(g.key)}${g.n < 10 ? ' <small class="hint">few calls</small>' : ""}</td><td class="num">${g.n}</td><td class="num">${g.win_rate}%</td><td class="num ${cls(g.avg_r)}">${f2(g.avg_r)}</td><td class="num ${cls(g.total_r)}">${f2(g.total_r)}</td></tr>`).join("")}</tbody></table></div>`;
@@ -410,6 +410,72 @@
       <ul class="checks">${finds}</ul>${mv}${Object.entries(rv.groups).map(([k, v]) => grp(k, v)).join("")}${checks}
       <p class="hint">All figures are in R after fees and slippage. Slicing the calls into many groups makes some look good or bad by chance: treat a group as real only when it has plenty of calls and the same pattern keeps showing up. Nothing here changes a rule by itself.</p></div>`;
   }
+
+  // ------------------------------------------------------------ hours (when money trades, Vietnam time)
+  const hh = (h) => `${String(h).padStart(2, "0")}:00`;
+  const sess = (ss) => (ss.includes("US") ? "us" : ss.includes("Europe") ? "eu" : ss.includes("Asia") ? "asia" : "none");
+  let hoursSel = null, hoursTimer = null;
+  async function loadHours() {
+    const r = await api("/api/hourly");
+    const job = r.job || {};
+    $("#hoursJob").textContent = job.running
+      ? `Building profiles in the background: ${job.done} of ${job.total} done${job.current ? ` (${job.current})` : ""}. The table fills in as they finish.`
+      : (r.coins.length ? "" : "No profile yet. The server builds them in the background after start-up (a few minutes); check back soon.") + (job.error ? ` Last problem: ${job.error}` : "");
+    const tendency = (o, list) => (list.length ? `${hh(o.hour)} <small>${o.avg_ret > 0 ? "+" : ""}${o.avg_ret.toFixed(3)}%/h</small>` : `<span class="hint">none stands out</span>`);
+    $("#hoursTable tbody").innerHTML = r.coins.map((c) => `<tr class="click" data-hsym="${esc(c.symbol)}">
+      <td class="coin-cell">${esc(c.base)}</td>
+      <td>${c.top.map((t) => `<span class="pill ${t.sessions.includes("US") ? "warn" : ""}" title="${esc(t.sessions.join(" / ") || "between sessions")}">${hh(t.hour)} <small>${t.share.toFixed(1)}%</small></span>`).join(" ")}</td>
+      <td class="num">${c.top_share.toFixed(0)}%</td><td>${hh(c.quiet)}</td>
+      <td class="num">${c.consistency == null ? "–" : c.consistency.toFixed(2)}</td>
+      <td>${tendency(c.best_hour, c.notable_up)}</td><td>${tendency(c.worst_hour, c.notable_down)}</td>
+      <td class="num">${c.days}</td></tr>`).join("") || `<tr><td colspan="8" class="wide">Nothing to show yet.</td></tr>`;
+    if (job.running && !hoursTimer) hoursTimer = setInterval(() => { if (!$("#tab-hours").hidden) loadHours().catch(() => {}); }, 15000);
+    if (!job.running && hoursTimer) { clearInterval(hoursTimer); hoursTimer = null; }
+    if (hoursSel) showHours(hoursSel).catch(() => {});
+  }
+  async function showHours(sym) {
+    hoursSel = sym;
+    const r = await api(`/api/hourly/${sym}`);
+    const H = r.profile.hours, W = 720, Hh = 150, bw = W / 24;
+    const maxS = Math.max(...H.map((x) => x.share), 100 / 24 * 1.2);
+    const maxR = Math.max(0.05, ...H.map((x) => Math.abs(x.avg_ret)));
+    const vol = H.map((x, i) => {
+      const h = (x.share / maxS) * (Hh - 24);
+      return `<rect class="hb ${sess(x.sessions)}" x="${i * bw + 2}" y="${Hh - 18 - h}" width="${bw - 4}" height="${h}"><title>${hh(x.hour)}: ${x.share.toFixed(1)}% of the day. ${esc(x.context)}</title></rect>
+        <text x="${i * bw + bw / 2}" y="${Hh - 4}" text-anchor="middle" class="hl">${x.hour}</text>`;
+    }).join("");
+    const flatY = Hh - 18 - ((100 / 24) / maxS) * (Hh - 24);
+    const ret = H.map((x, i) => {
+      const h = (Math.abs(x.avg_ret) / maxR) * 50, up = x.avg_ret >= 0;
+      return `<rect class="rb ${x.notable ? (up ? "good" : "bad") : "grey"}" x="${i * bw + 2}" y="${up ? 60 - h : 60}" width="${bw - 4}" height="${Math.max(h, 0.5)}"><title>${hh(x.hour)}: ${x.avg_ret > 0 ? "+" : ""}${x.avg_ret.toFixed(3)}% per hour, up in ${x.up_rate.toFixed(0)}% of ${x.n} hours (t = ${x.t.toFixed(1)})${x.notable ? ", stands out" : ", within noise"}</title></rect>`;
+    }).join("");
+    const rows = H.map((x) => `<tr><td>${hh(x.hour)}</td><td class="num">${x.share.toFixed(1)}%</td><td class="num">${x.buy_share == null ? "–" : x.buy_share.toFixed(1) + "%"}</td>
+      <td class="num ${x.notable ? cls(x.avg_ret) : ""}">${x.avg_ret > 0 ? "+" : ""}${x.avg_ret.toFixed(3)}%</td><td class="num">${x.up_rate == null ? "–" : x.up_rate.toFixed(0) + "%"}</td>
+      <td class="num">${x.t.toFixed(1)}</td><td class="wide">${esc(x.context)}</td></tr>`).join("");
+    const tone = { good: "ok", warn: "no", info: "", bad: "no" }, ic = { good: "✓", warn: "!", info: "i", bad: "✗" };
+    $("#hoursDetail").innerHTML = `<div class="card"><h3>${esc(sym.replace(/USDT$/, ""))}: hour by hour (Vietnam time)</h3>
+      <p class="hint">Share of the day's trading volume per hour. The dashed line is an even share (4.2%). <span class="lg asia"></span> Asia <span class="lg eu"></span> Europe <span class="lg us"></span> US (overlaps are coloured by the later session). Based on ${r.profile.days} complete days.</p>
+      <svg viewBox="0 0 ${W} ${Hh}" class="hchart" role="img" aria-label="Share of daily volume by hour">${vol}<line x1="0" x2="${W}" y1="${flatY}" y2="${flatY}" class="flat"/></svg>
+      <p class="hint">Average price move in each hour. Grey bars are within normal noise; green or red bars stand out (|t| ≥ 3) but still describe only the past.</p>
+      <svg viewBox="0 0 ${W} 120" class="hchart" role="img" aria-label="Average price move by hour"><line x1="0" x2="${W}" y1="60" y2="60" class="flat"/>${ret}</svg>
+      <ul class="checks">${r.reading.map((x) => `<li class="${tone[x.tone]}"><span class="ic">${ic[x.tone]}</span><span>${esc(x.text)}</span></li>`).join("")}</ul>
+      <details><summary>All 24 hours</summary><div class="table-wrap"><table class="grid"><thead><tr><th>Hour</th><th class="num">Share of day</th><th class="num">Taker buys</th><th class="num">Average move</th><th class="num">Up hours</th><th class="num">t</th><th class="wide">What coincides</th></tr></thead><tbody>${rows}</tbody></table></div></details>
+      <p class="hint">Built ${dateTime(r.computed_at)} and refreshed weekly. "Taker buys" is the share of volume where the buyer hit the sell orders: it shows who is aggressive, not money moving in or out of the exchange.</p></div>`;
+  }
+  $("#hoursTable").addEventListener("click", (e) => {
+    const tr = e.target.closest("[data-hsym]"); if (!tr) return;
+    showHours(tr.dataset.hsym).then(() => $("#hoursDetail").scrollIntoView({ behavior: "smooth", block: "start" })).catch(() => {});
+  });
+  $("#hoursForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = $("#hoursSym").value.trim().toUpperCase(), msg = $("#hoursMsg");
+    if (!v) return;
+    try {
+      await api(`/api/hourly/${v.endsWith("USDT") ? v : v + "USDT"}`, { method: "POST" });
+      msg.textContent = "Building in the background: check back in a minute."; $("#hoursSym").value = "";
+      setTimeout(() => loadHours().catch(() => {}), 5000);
+    } catch (err) { msg.textContent = String(err.message || err).replace(/^\d+ /, "").replace(/^\{"detail":"(.*)"\}$/, "$1"); }
+  });
 
   // ------------------------------------------------------------ journal
   let J = { rows: [], stats: {}, tags: { mistakes: [], good: [] } }, jCalls = [];
@@ -440,7 +506,7 @@
       grp("Followed the app's call", st.followed), grp("Did not follow the app", st.not_followed),
       ...Object.entries(st.by_tag || {}).map(([t, g]) => grp(`Tag: ${t}`, g))].join("");
     const va = st.vs_app ? `<p class="hint">Linked to app calls (${st.vs_app.n} trades): you averaged ${rr(st.vs_app.my_avg_r)}, the app's calls averaged ${rr(st.vs_app.app_avg_r)}.</p>` : "";
-    const cost = st.with_mistake && st.with_mistake.total < 0 ? `<p class="hint"><b>Tagged mistakes have cost you ${usd(-st.with_mistake.total)} USDT</b> over ${st.with_mistake.n} trades.</p>` : "";
+    const cost = st.with_mistake && st.with_mistake.total < 0 ? `<p class="hint"><b>Tagged mistakes have cost you ${usd(-st.with_mistake.total)} USDT</b> over ${st.with_mistake.n} trade${st.with_mistake.n === 1 ? "" : "s"}.</p>` : "";
     $("#jinsights").innerHTML = `<div class="card"><h3>What the numbers say</h3>${cost}${va}
       <div class="table-wrap"><table class="grid"><thead><tr><th>Group</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">Total (USDT)</th><th class="num">Average (USDT)</th></tr></thead><tbody>${rowsT}</tbody></table></div>
       <p class="hint">Groups with fewer than about 20 trades are too small to trust. Results include the fees you entered, not funding.</p></div>`;
@@ -630,6 +696,7 @@
     if (t.dataset.tab === "active") renderHistory().catch(() => {});
     if (t.dataset.tab === "watch") { loadWatchHistory(); }
     if (t.dataset.tab === "journal") loadJournal().catch(() => {});
+    if (t.dataset.tab === "hours") loadHours().catch(() => {});
     if (t.dataset.tab === "settings" && S) renderSettings(true);
   }));
   $("#listSeg").addEventListener("click", (e) => {

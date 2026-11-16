@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
-from . import engine, fundamentals, screener, store, telegram
+from . import engine, fundamentals, hourly, screener, store, telegram
 from .binance import Binance, BinanceError
 from .indicators import add_indicators
 
@@ -65,6 +65,7 @@ class Advisor:
             "last_refresh": None, "last_error": None, "refreshing": False,
             "regime": None, "lists": {"top_volume": [], "top_gainers": [], "watchlist": []},
             "coins": {}, "next_refresh": next_refresh_at(),
+            "hourly": {"running": False, "done": 0, "total": 0, "error": None, "current": None},
             "screener": {"day": None, "running": False, "updated": None, "results": [],
                          "scanned": 0, "falling": 0, "error": None},
         }
@@ -230,11 +231,50 @@ class Advisor:
         if alerts and telegram.configured():
             await telegram.send("\n\n".join(alerts[:15]))
 
+        # Hour-of-day profiles: new or stale coins, one at a time in the background
+        hs = self.state["hourly"]
+        if not hs["running"]:
+            wanted = list(dict.fromkeys(["BTCUSDT", *watchlist, *top_volume, *store.watch_coins(),
+                                         *(r["symbol"] for r in self.state["screener"].get("results", []))]))
+            asyncio.create_task(self.run_hourly(wanted[:C.HOURLY_MAX_COINS]))
+
         # Altcoin screener: once a day (after the 00:00 UTC daily close), in the background
         utc_day = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
         sc = self.state["screener"]
         if sc["day"] != utc_day and not sc["running"]:
             asyncio.create_task(self.run_screener(tickers, utc_day))
+
+    # ------------------------------------------------------------ hour-of-day profiles (v1.2.4)
+    async def run_hourly(self, symbols: list[str]) -> None:
+        hs = self.state["hourly"]
+        now_ms = int(time.time() * 1000)
+        todo = [s for s in symbols if (store.hourly_age_ms(s, now_ms) or 10 ** 15) > C.HOURLY_REFRESH_DAYS * 86_400_000]
+        if not todo:
+            return
+        hs.update(running=True, done=0, total=len(todo), error=None)
+        try:
+            for s in todo:
+                hs["current"] = s
+                try:
+                    df = await self.api.history_1h(s, C.HOURLY_DAYS)
+                    prof = hourly.compute(df)
+                    if prof:
+                        store.hourly_save(s, prof, int(time.time() * 1000))
+                    else:
+                        log.info("Hourly profile: not enough history for %s", s)
+                        store.hourly_save(s, {"too_short": True}, int(time.time() * 1000))
+                except BinanceError as e:
+                    log.warning("Hourly profile %s: %s", s, e)
+                    hs["error"] = str(e)
+                    if "rate limit" in str(e).lower():
+                        break
+                hs["done"] += 1
+                await asyncio.sleep(C.HOURLY_PAUSE_SECONDS)
+        except Exception as e:
+            log.exception("Hourly profiles failed")
+            hs["error"] = str(e)
+        finally:
+            hs.update(running=False, current=None)
 
     # ------------------------------------------------------------ altcoin screener
     async def run_screener(self, tickers: list[dict], day: str) -> None:

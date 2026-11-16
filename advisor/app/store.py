@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS journal (
   trade_date TEXT, symbol TEXT, market TEXT, side TEXT, entry REAL, exit REAL,
   qty REAL, followed INTEGER, notes TEXT
 );
+CREATE TABLE IF NOT EXISTS hourly_profile (symbol TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, profile TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS zone_alerts (symbol TEXT PRIMARY KEY, alerted_at INTEGER NOT NULL);
 """)
 
@@ -198,6 +199,28 @@ def journal_add(e: dict) -> None:
 
 def journal_delete(entry_id: int) -> None:
     _q("DELETE FROM journal WHERE id=?", (entry_id,), commit=True)
+
+
+# ---------------------------------------------------------------- hour-of-day profiles
+def hourly_save(symbol: str, profile: dict, now_ms: int) -> None:
+    _q("INSERT INTO hourly_profile(symbol, computed_at, profile) VALUES(?,?,?) "
+       "ON CONFLICT(symbol) DO UPDATE SET computed_at=excluded.computed_at, profile=excluded.profile",
+       (symbol, now_ms, json.dumps(profile)), commit=True)
+
+
+def hourly_all() -> list[dict]:
+    return [{"symbol": r["symbol"], "computed_at": r["computed_at"], "profile": json.loads(r["profile"])}
+            for r in _q("SELECT * FROM hourly_profile ORDER BY symbol")]
+
+
+def hourly_get(symbol: str) -> dict | None:
+    r = _q("SELECT * FROM hourly_profile WHERE symbol=?", (symbol,)).fetchone()
+    return {"symbol": symbol, "computed_at": r["computed_at"], "profile": json.loads(r["profile"])} if r else None
+
+
+def hourly_age_ms(symbol: str, now_ms: int) -> int | None:
+    r = _q("SELECT computed_at FROM hourly_profile WHERE symbol=?", (symbol,)).fetchone()
+    return now_ms - r["computed_at"] if r else None
 
 
 # ---------------------------------------------------------------- screener zone alerts

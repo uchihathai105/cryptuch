@@ -229,3 +229,13 @@ input, select { background: var(--bg); border: 1px solid var(--line); border-rad
 .chip-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 4px 9px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--surface); cursor: pointer; }
 .card h4 { margin: 16px 0 6px; font-size: 13px; color: var(--ink-2); }
+
+.hchart { width: 100%; max-width: 720px; height: auto; display: block; margin: 6px 0 10px; }
+.hchart .hb.asia { fill: var(--good); } .hchart .hb.eu { fill: var(--warn); } .hchart .hb.us { fill: var(--bad); } .hchart .hb.none { fill: var(--muted); }
+.hchart .rb.good { fill: var(--good); } .hchart .rb.bad { fill: var(--bad); } .hchart .rb.grey { fill: var(--muted); opacity: 0.55; }
+.hchart .hl { font-size: 9px; fill: var(--muted); } .hchart .flat { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
+.lg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
+.lg.asia { background: var(--good); } .lg.eu { background: var(--warn); } .lg.us { background: var(--bad); }
+details summary { cursor: pointer; margin: 8px 0; font-size: 13px; color: var(--ink-2); }
+.form .full { grid-column: 1 / -1; }
+#j-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
