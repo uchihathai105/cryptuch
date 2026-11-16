@@ -221,7 +221,7 @@ class Advisor:
             coins[s] = coin
 
         alerts += self._track_active(coins)
-        alerts += self._open_new(coins)
+        alerts += self._open_new(coins, regime)
         alerts += self._zone_alerts(by_symbol)
 
         self.state.update(regime=regime, coins=clean(coins),
@@ -295,7 +295,7 @@ class Advisor:
         return float(t.get("quoteVolume") or 0) >= C.SCREEN_MIN_VOLUME_USDT
 
     # ------------------------------------------------------------ call tracking (URS F11, F23)
-    def _open_new(self, coins: dict) -> list[str]:
+    def _open_new(self, coins: dict, regime: str | None = None) -> list[str]:
         out = []
         for s, coin in coins.items():
             for market in ("futures", "spot"):
@@ -304,7 +304,7 @@ class Advisor:
                     continue
                 if store.has_active(s, market):
                     continue
-                store.open_call(s, market, res)
+                store.open_call(s, market, res, regime)
                 icon = "🟢" if res["side"] == "long" else "🔴"
                 f = engine.fmt
                 out.append(
@@ -328,8 +328,12 @@ class Advisor:
             stop = entry if c["t1_hit"] else c["stop"]
             t1_hit = bool(c["t1_hit"])
             closed = None
+            mfe, mae = c.get("mfe_r") or 0.0, c.get("mae_r") or 0.0
             new = e15[e15["open_time"] >= max(c["created_at"], c["checked_until"])]
             for _, k in new.iterrows():
+                fav = ((k["high"] - entry) if long else (entry - k["low"])) / R
+                adv = ((entry - k["low"]) if long else (k["high"] - entry)) / R
+                mfe, mae = max(mfe, fav), max(mae, adv)
                 hit_stop = k["low"] <= stop if long else k["high"] >= stop
                 if hit_stop:
                     r = 0.5 * C.TARGET1_R if t1_hit else -1.0
@@ -357,7 +361,7 @@ class Advisor:
                 outcome, px, r = closed
                 store.update_call(c["id"], status="closed", closed_at=int(time.time() * 1000), outcome=outcome,
                                   exit_price=px, result_r=round(r, 2), advice="Exit", advice_note=outcome,
-                                  t1_hit=int(t1_hit), checked_until=checked)
+                                  t1_hit=int(t1_hit), checked_until=checked, mfe_r=round(mfe, 2), mae_r=round(mae, 2))
                 icon = "✅" if r > 0 else "⛔"
                 out.append(f"{icon} <b>Exit {c['symbol']}</b> ({c['market']} {c['call']}): {outcome} at {f(px)} "
                            f"· result {r:+.2f}R")
@@ -370,7 +374,8 @@ class Advisor:
                                f"stop moves to entry {f(entry)}")
                 if t1_hit:
                     note = "T1 reached; stop moved to entry. " + note
-                store.update_call(c["id"], t1_hit=int(t1_hit), advice="Hold", advice_note=note, checked_until=checked)
+                store.update_call(c["id"], t1_hit=int(t1_hit), advice="Hold", advice_note=note, checked_until=checked,
+                                  mfe_r=round(mfe, 2), mae_r=round(mae, 2))
         return out
 
     # ------------------------------------------------------------ chart data

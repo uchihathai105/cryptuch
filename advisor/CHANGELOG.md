@@ -3,6 +3,21 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.2.3 — 16 Nov 2026
+- Active calls track record: new **"Why calls win or lose"** review under the track record. Signal rules are unchanged; only
+  what is recorded and reported changes.
+- Each new call now stores a snapshot when it opens (which checks were met, BTC regime, setup kind) and, while it is open, the best
+  and worst the price went against the entry in R (`mfe_r`, `mae_r`, from 15m candles). Calls opened before this have no snapshot.
+- Results are also shown **net of fees and slippage** (`CALL_COST_PCT`: spot 0.30%, futures 0.20% of entry, same as Watch,
+  divided by the stop distance). The stored `result_r` is unchanged and still ignores costs.
+- Review: win rate, average and total R, profit factor, worst drop, longest losing run; results by call, market, confidence,
+  BTC regime, setup, how it ended, time held, time of day and rules version; results with each check met vs not met; share of
+  losers that reversed after reaching 1R, never worked, or were stopped within an hour; plain-language findings. Groups under
+  `REVIEW_MIN_GROUP` (10) calls are marked "few calls"; under `REVIEW_MIN_ACT` (30) closed calls the findings say it is too early to
+  change rules. Each closed call gets a one-line reason ("Wrong from the start", "Reversal", ...). Nothing changes a rule by itself.
+- New endpoint `/api/review`; `/api/calls/history` now includes `why` and `net_r`.
+- Still simulated: a call is assumed filled at its entry price at once. Tests: `python -m tests.test_review`.
+
 ## 1.2.2 — 16 Nov 2026
 - Altcoin screener: new **Dilution** column and a **Project checklist** card. The server asks CoinGecko once a day for
   market cap, fully diluted value (FDV) and supply of the listed coins. Flag: High when FDV / market cap ≥ 4 or under 30% of

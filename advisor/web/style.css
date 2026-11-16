@@ -228,3 +228,4 @@ input, select { background: var(--bg); border: 1px solid var(--line); border-rad
 
 .chip-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 4px 9px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--surface); cursor: pointer; }
+.card h4 { margin: 16px 0 6px; font-size: 13px; color: var(--ink-2); }

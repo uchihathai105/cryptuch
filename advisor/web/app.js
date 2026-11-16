@@ -379,12 +379,36 @@
   }
   const kpi = (v, l) => `<div class="kpi"><b>${esc(v)}</b><span>${esc(l)}</span></div>`;
   async function renderHistory() {
-    const rows = await api("/api/calls/history");
+    const [rows, rv] = await Promise.all([api("/api/calls/history"), api("/api/review").catch(() => ({ n: 0 }))]);
     $("#historyTable tbody").innerHTML = rows.map((c) => `<tr>
       <td>${dateTime(c.closed_at)}</td><td class="coin-cell">${esc(c.symbol.replace(/USDT$/, ""))}<span class="tag">${esc(c.market)}</span></td>
       <td>${pill(c.call)}</td><td class="num">${px(c.entry)}</td><td class="num">${px(c.exit_price)}</td>
       <td class="num ${cls(c.result_r)}">${c.result_r > 0 ? "+" : ""}${c.result_r.toFixed(2)}R</td>
-      <td class="wide">${esc(c.outcome)}</td></tr>`).join("") || `<tr><td colspan="7" class="wide">Nothing closed yet.</td></tr>`;
+      <td class="num ${cls(c.net_r)}">${c.net_r == null ? "–" : `${c.net_r > 0 ? "+" : ""}${c.net_r.toFixed(2)}R`}</td>
+      <td class="wide"><b>${esc(c.outcome)}</b><br><small>${esc(c.why || "")}</small></td></tr>`).join("") || `<tr><td colspan="8" class="wide">Nothing closed yet.</td></tr>`;
+    renderReview(rv);
+  }
+  function renderReview(rv) {
+    const box = $("#review");
+    if (!rv || !rv.n) { box.innerHTML = ""; return; }
+    const o = rv.overall, m = rv.movement;
+    const f2 = (x) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}R`);
+    const kp = kpi(rv.n, "closed calls") + kpi(`${o.win_rate}%`, "win rate (net)") + kpi(f2(o.avg_r), "average per call, net") +
+      kpi(f2(o.gross_avg_r), "average, before costs") + kpi(f2(-o.avg_cost_r), "fees + slippage per call") +
+      kpi(o.profit_factor == null ? "–" : o.profit_factor.toFixed(2), "profit factor") +
+      kpi(`${o.max_drawdown_r.toFixed(1)}R`, "worst drop") + kpi(o.longest_losing_streak, "longest losing run");
+    const tone = { good: "ok", bad: "no", warn: "no", info: "na" }, ic = { good: "✓", bad: "✗", warn: "!", info: "i" };
+    const finds = rv.findings.map((x) => `<li class="${tone[x.tone]}"><span class="ic">${ic[x.tone]}</span><span>${esc(x.text)}</span></li>`).join("");
+    const grp = (name, items) => `<h4>${esc(name)}</h4><div class="table-wrap"><table class="grid"><thead><tr><th>Group</th><th class="num">Calls</th><th class="num">Win rate</th><th class="num">Average (net)</th><th class="num">Total (net)</th></tr></thead><tbody>${
+      items.map((g) => `<tr><td>${esc(g.key)}${g.n < 10 ? ' <small class="hint">few calls</small>' : ""}</td><td class="num">${g.n}</td><td class="num">${g.win_rate}%</td><td class="num ${cls(g.avg_r)}">${f2(g.avg_r)}</td><td class="num ${cls(g.total_r)}">${f2(g.total_r)}</td></tr>`).join("")}</tbody></table></div>`;
+    const checks = rv.checks.length ? `<h4>Which checks mattered (met vs not met when the call opened)</h4><div class="table-wrap"><table class="grid"><thead><tr><th>Check</th><th class="num">Met: calls</th><th class="num">Met: average</th><th class="num">Not met: calls</th><th class="num">Not met: average</th><th class="num">Difference</th></tr></thead><tbody>${
+      rv.checks.map((c) => `<tr><td>${esc(c.name)}</td><td class="num">${c.met.n}</td><td class="num">${c.met.n ? f2(c.met.avg_r) : "–"}</td><td class="num">${c.missed.n}</td><td class="num">${c.missed.n ? f2(c.missed.avg_r) : "–"}</td><td class="num ${cls(c.edge)}">${c.edge == null ? "–" : f2(c.edge)}</td></tr>`).join("")}</tbody></table></div>` : "";
+    const mv = m.with_data ? `<h4>How the calls moved</h4><p class="hint">Of ${m.with_data} calls with movement data: ${m.losers} lost, ${m.winners} won.
+      ${m.loser_reversal_share == null ? "" : `${m.loser_reversal_share.toFixed(0)}% of the losers first went 1R or more in your favour; ${m.loser_never_worked_share.toFixed(0)}% never went past 0.3R; ${m.loser_fast_stop_share.toFixed(0)}% were stopped within an hour.`}
+      ${m.winner_avg_heat_r == null ? "" : `Winners went ${m.winner_avg_heat_r.toFixed(1)}R against the call on average before working.`}</p>` : `<p class="hint">Movement data (how far each call went in and against your favour) is recorded for calls opened from v1.2.3 on.</p>`;
+    box.innerHTML = `<div class="card"><h3>Why calls win or lose</h3><div class="kpis">${kp}</div>
+      <ul class="checks">${finds}</ul>${mv}${Object.entries(rv.groups).map(([k, v]) => grp(k, v)).join("")}${checks}
+      <p class="hint">All figures are in R after fees and slippage. Slicing the calls into many groups makes some look good or bad by chance: treat a group as real only when it has plenty of calls and the same pattern keeps showing up. Nothing here changes a rule by itself.</p></div>`;
   }
 
   // ------------------------------------------------------------ journal

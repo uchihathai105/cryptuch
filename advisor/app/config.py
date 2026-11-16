@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.2.2 (2026-11-16)"
+RULES_VERSION = "1.2.3 (2026-11-16)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -92,6 +92,11 @@ COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 FUND_FDV_MC_WARN, FUND_FDV_MC_BAD = 2.0, 4.0      # fully diluted value / market cap
 FUND_CIRC_PCT_WARN, FUND_CIRC_PCT_BAD = 60.0, 30.0  # % of the final supply already circulating
 ZONE_ALERT_COOLDOWN_DAYS = 3          # Telegram "price reached the buy-in zone": at most once per coin in this time
+# Track-record review (v1.2.3): why calls win or lose
+REVIEW_MIN_GROUP = 10                 # groups smaller than this are shown but never drawn conclusions from
+REVIEW_MIN_ACT = 30                   # below this many closed calls, findings are labelled "too early to act on"
+REVIEW_EDGE_R = 0.3                   # a group is called strong / weak when it differs from the rest by this much R
+CALL_COST_PCT = {"futures": 0.10 + 0.10, "spot": 0.20 + 0.10}   # round-trip fee + slippage, % of entry (same as Watch)
 # Journal tags: mistakes are what the journal adds up the cost of
 JOURNAL_MISTAKE_TAGS = ("Entered early", "Chased the price", "No stop-loss", "Moved the stop", "Position too big",
                         "Revenge trade", "Ignored the app's call")

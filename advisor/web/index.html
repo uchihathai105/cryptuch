@@ -165,11 +165,13 @@
       <p class="hint">Results of closed calls, in R (1R = the distance from entry to stop). Half is taken at T1, the rest at T2 or on exit.</p>
     </div>
     <div id="record" class="kpis"></div>
+    <p class="hint"><b>These calls are simulated.</b> The app assumes each call was filled at its entry price the moment it appeared, and the first row of results ignores fees. The review below subtracts fees and slippage ("net" R). The real record is your Journal.</p>
+    <div id="review"></div>
     <div class="table-wrap">
       <table class="grid" id="historyTable">
         <thead><tr>
           <th>Closed</th><th>Coin</th><th>Call</th><th class="num">Entry</th><th class="num">Exit</th>
-          <th class="num">Result</th><th class="wide">Outcome</th>
+          <th class="num">Result</th><th class="num">Net of costs</th><th class="wide">Outcome and why</th>
         </tr></thead>
         <tbody></tbody>
       </table>

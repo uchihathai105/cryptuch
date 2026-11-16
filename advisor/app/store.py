@@ -65,6 +65,11 @@ def _add_column(table: str, col: str, ddl: str) -> None:
         _db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
 
 
+_add_column("calls", "checks", "TEXT")        # JSON {check name: passed} when the call was opened (v1.2.3)
+_add_column("calls", "regime", "TEXT")        # BTC regime at that time
+_add_column("calls", "setup_kind", "TEXT")    # pullback / breakout
+_add_column("calls", "mfe_r", "REAL")         # best the price went in the call's favour, in R
+_add_column("calls", "mae_r", "REAL")         # worst it went against the call, in R (positive number)
 _add_column("journal", "stop", "REAL")        # planned stop price, to work out the result in R
 _add_column("journal", "fees", "REAL")        # fees paid in USDT
 _add_column("journal", "call_id", "INTEGER")  # the app call this trade followed
@@ -107,11 +112,14 @@ def has_active(symbol: str, market: str) -> dict | None:
     return dict(r) if r else None
 
 
-def open_call(symbol: str, market: str, res: dict) -> int:
+def open_call(symbol: str, market: str, res: dict, regime: str | None = None) -> int:
+    checks = {c["name"]: c["passed"] for c in res.get("checks", []) if c.get("applies", True)}
     cur = _q("""INSERT INTO calls(created_at, symbol, market, side, call, entry, stop, t1, t2, confidence,
-                reason, rules_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                reason, rules_version, checks, regime, setup_kind, mfe_r, mae_r)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0)""",
              (int(time.time() * 1000), symbol, market, res["side"], res["call"], res["entry"], res["stop"],
-              res["t1"], res["t2"], res["confidence"], res["reason"], C.RULES_VERSION), commit=True)
+              res["t1"], res["t2"], res["confidence"], res["reason"], C.RULES_VERSION,
+              json.dumps(checks), regime, res.get("setup_kind")), commit=True)
     return cur.lastrowid
 
 

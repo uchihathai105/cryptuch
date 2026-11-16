@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import auth, engine, journal as journal_stats, store, telegram, watch
+from . import auth, engine, journal as journal_stats, review, store, telegram, watch
 from .service import Advisor, clean, next_refresh_at
 from .watcher import Watcher, normalise
 
@@ -149,7 +149,17 @@ async def refresh_now():
 
 @app.get("/api/calls/history")
 def call_history():
-    return clean(store.closed_calls())
+    rows = store.closed_calls()
+    for c in rows:
+        c["why"] = review.explain(c)
+        c["net_r"] = c["result_r"] - review.cost_r(c) if c.get("result_r") is not None and c.get("entry") else None
+    return clean(rows)
+
+
+@app.get("/api/review")
+def call_review():
+    """Why closed calls won or lost (after fees and slippage)."""
+    return clean(review.analyze(store.closed_calls(10_000)))
 
 
 # ---------------------------------------------------------------- Watch tab
