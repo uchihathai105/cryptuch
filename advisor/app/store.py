@@ -54,7 +54,21 @@ CREATE TABLE IF NOT EXISTS journal (
   trade_date TEXT, symbol TEXT, market TEXT, side TEXT, entry REAL, exit REAL,
   qty REAL, followed INTEGER, notes TEXT
 );
+CREATE TABLE IF NOT EXISTS zone_alerts (symbol TEXT PRIMARY KEY, alerted_at INTEGER NOT NULL);
 """)
+
+
+def _add_column(table: str, col: str, ddl: str) -> None:
+    """Small migration: older databases get the new column, new ones already have it."""
+    have = {r["name"] for r in _db.execute(f"PRAGMA table_info({table})")}
+    if col not in have:
+        _db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+
+
+_add_column("journal", "stop", "REAL")        # planned stop price, to work out the result in R
+_add_column("journal", "fees", "REAL")        # fees paid in USDT
+_add_column("journal", "call_id", "INTEGER")  # the app call this trade followed
+_add_column("journal", "tags", "TEXT")        # comma-separated mistake / good-habit tags
 _db.commit()
 
 
@@ -157,19 +171,36 @@ def previous_screen(day: str) -> dict[str, str]:
 
 # ---------------------------------------------------------------- journal
 def journal_list() -> list[dict]:
-    return [dict(r) for r in _q("SELECT * FROM journal ORDER BY trade_date DESC, id DESC")]
+    """Trades with the linked app call's result (call_r) when there is one."""
+    return [dict(r) for r in _q("""SELECT j.*, c.result_r AS call_r, c.status AS call_status
+                                   FROM journal j LEFT JOIN calls c ON c.id = j.call_id
+                                   ORDER BY j.trade_date DESC, j.id DESC""")]
 
 
 def journal_add(e: dict) -> None:
-    _q("""INSERT INTO journal(created_at, trade_date, symbol, market, side, entry, exit, qty, followed, notes)
-          VALUES(?,?,?,?,?,?,?,?,?,?)""",
+    allowed = set(C.JOURNAL_MISTAKE_TAGS) | set(C.JOURNAL_GOOD_TAGS)
+    tags = ",".join(t for t in (e.get("tags") or []) if t in allowed)
+    _q("""INSERT INTO journal(created_at, trade_date, symbol, market, side, entry, exit, qty, followed, notes,
+                              stop, fees, call_id, tags)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
        (int(time.time() * 1000), e.get("trade_date"), e.get("symbol", "").upper(), e.get("market"),
         e.get("side"), e.get("entry"), e.get("exit"), e.get("qty"), 1 if e.get("followed") else 0,
-        e.get("notes", "")), commit=True)
+        e.get("notes", ""), e.get("stop"), e.get("fees"), e.get("call_id"), tags), commit=True)
 
 
 def journal_delete(entry_id: int) -> None:
     _q("DELETE FROM journal WHERE id=?", (entry_id,), commit=True)
+
+
+# ---------------------------------------------------------------- screener zone alerts
+def zone_alert_recent(symbol: str, now_ms: int) -> bool:
+    r = _q("SELECT alerted_at FROM zone_alerts WHERE symbol=?", (symbol,)).fetchone()
+    return bool(r and now_ms - r["alerted_at"] < C.ZONE_ALERT_COOLDOWN_DAYS * 86_400_000)
+
+
+def zone_alert_mark(symbol: str, now_ms: int) -> None:
+    _q("INSERT INTO zone_alerts(symbol, alerted_at) VALUES(?,?) "
+       "ON CONFLICT(symbol) DO UPDATE SET alerted_at=excluded.alerted_at", (symbol, now_ms), commit=True)
 
 
 # ---------------------------------------------------------------- Watch tab (v1.2)

@@ -178,7 +178,7 @@
       const msg = sc.error ? `Scan failed: ${esc(sc.error)}` : sc.running || !sc.updated
         ? "Scanning every liquid altcoin on Binance… the first scan takes about a minute."
         : "No altcoin passes the rules today.";
-      body.innerHTML = `<tr><td colspan="11" class="wide">${msg}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="12" class="wide">${msg}</td></tr>`;
       return;
     }
     body.innerHTML = rows.map((r) => `<tr class="click" data-sym="${esc(r.symbol)}" data-mkt="spot" data-tf="1d" title="${esc(r.note)}">
@@ -187,8 +187,30 @@
       <td class="num down">${pct(r.drawdown, 0)}</td><td class="num">${pct(r.up_from_low, 0)}</td>
       <td class="num ${cls(r.rs_btc30)}">${r.rs_btc30 == null ? "–" : `${r.rs_btc30 > 0 ? "+" : ""}${r.rs_btc30.toFixed(1)} pts`}</td>
       <td class="num">${r.vol_ratio.toFixed(2)}×</td>
+      <td>${dilutionPill(r.fundamentals)}</td>
       <td class="mono">${r.zone ? `${px(r.zone[0])} – ${px(r.zone[1])}` : "–"}</td>
       <td class="num">${px(r.invalidation)} <small>(${pct(r.invalidation_pct, 0)})</small></td></tr>`).join("");
+  }
+  function dilutionPill(f) {
+    if (!f || f.flag === "unknown") return `<span class="pill" title="${esc(f ? f.text : "No supply data")}">Unknown</span>`;
+    const tone = { ok: "good", warn: "warn", bad: "bad" }[f.flag], word = { ok: "Low", warn: "Medium", bad: "High" }[f.flag];
+    return `<span class="pill ${tone}" title="${esc(f.text)}">${word}${f.fdv_mc ? ` · ${f.fdv_mc.toFixed(1)}×` : ""}</span>`;
+  }
+  const bigUsd = (x) => (x == null ? "–" : x >= 1e9 ? `$${(x / 1e9).toFixed(2)}B` : `$${(x / 1e6).toFixed(0)}M`);
+  function projectCard(r) {
+    const f = r.fundamentals || {};
+    const auto = [
+      ["Dilution from supply", f.flag === "ok" || f.flag === "warn" || f.flag === "bad" ? f.flag !== "bad" : null, f.text || "No supply data."],
+      ["Market cap / FDV", f.market_cap ? true : null, f.market_cap ? `${bigUsd(f.market_cap)} market cap, ${bigUsd(f.fdv)} fully diluted` : "Not available"],
+    ];
+    const manual = ["Token unlock dates in the next 3 months", "Team and early-investor vesting", "Listed on several large exchanges",
+      "Recent news: hacks, lawsuits, delistings", "Real use and active development"];
+    const li = (ok, name, txt) => `<li class="${ok == null ? "na" : ok ? "ok" : "no"}"><span class="ic">${ok == null ? "?" : ok ? "✓" : "✗"}</span><span><b>${esc(name)}</b> · ${esc(txt)}</span></li>`;
+    const links = f.links ? [f.links.coingecko && `<a href="${esc(f.links.coingecko)}" target="_blank" rel="noopener">CoinGecko page</a>`,
+      f.links.news && `<a href="${esc(f.links.news)}" target="_blank" rel="noopener">Search token unlock news</a>`].filter(Boolean).join(" · ") : "";
+    return `<div class="card"><div class="callhead"><h3>Project checklist</h3></div>
+      <ul class="checks">${auto.map((a) => li(...a)).join("")}${manual.map((m) => li(null, m, "check yourself")).join("")}</ul>
+      ${links ? `<p class="hint">${links}</p>` : ""}</div>`;
   }
   function screenCard(r) {
     const names = { above_sma50: "Above 50-day", sma50_rising: "50-day rising", higher_low: "Higher low", beats_btc: "Beats BTC (30d)", volume_returning: "Volume returning", rsi_ok: "RSI", not_extended: "Not run up yet" };
@@ -203,7 +225,7 @@
         <dt>Idea wrong below</dt><dd>${px(r.invalidation)} <small>(${pct(r.invalidation_pct, 0)})</small></dd>
       </dl>
       <ul class="checks">${r.checks.map((k) => `<li class="${k.passed ? "ok" : "no"}"><span class="ic">${k.passed ? "✓" : "✗"}</span><span><b>${names[k.name]}</b> · ${esc(k.detail)}</span></li>`).join("")}</ul>
-      <p class="hint">Price and volume only. Check the project's token unlocks and news before buying.</p></div>`;
+      <p class="hint">Price and volume only. Check the project's token unlocks and news before buying.</p></div>${projectCard(r)}`;
   }
 
 
@@ -366,29 +388,57 @@
   }
 
   // ------------------------------------------------------------ journal
-  function pnl(j) {
-    if (j.exit == null || j.entry == null || j.qty == null) return null;
-    return (j.exit - j.entry) * j.qty * (j.side === "short" ? -1 : 1);
-  }
-  function renderJournal(rows) {
+  let J = { rows: [], stats: {}, tags: { mistakes: [], good: [] } }, jCalls = [];
+  const sgn = (x, f) => (x == null ? "–" : `${x > 0 ? "+" : ""}${f(x)}`);
+  const rr = (x) => (x == null ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}R`);
+  function renderJournal(payload) {
+    if (payload) J = payload;
+    const rows = J.rows || [], st = J.stats || {};
+    $("#j-tags").innerHTML = [...(J.tags.mistakes || []), ...(J.tags.good || [])].map((t) =>
+      `<label class="chip-check"><input type="checkbox" data-tag="${esc(t)}"> ${esc(t)}</label>`).join("");
     $("#jTable tbody").innerHTML = rows.map((j) => {
-      const p = pnl(j);
+      const tags = (j.tags || "").split(",").filter(Boolean).map((t) => `<span class="pill ${(J.tags.good || []).includes(t) ? "good" : "warn"}">${esc(t)}</span>`).join(" ");
       return `<tr><td>${esc(j.trade_date)}</td><td class="coin-cell">${esc(j.symbol)}</td><td>${esc(j.market)}</td>
         <td>${j.side === "short" ? "Short" : "Long / Buy"}</td><td class="num">${px(j.entry)}</td><td class="num">${px(j.exit)}</td>
-        <td class="num">${qty(j.qty)}</td><td class="num ${cls(p)}">${p == null ? "open" : `${p > 0 ? "+" : ""}${usd(p)}`}</td>
-        <td>${j.followed ? "Yes" : "No"}</td><td class="wide">${esc(j.notes)}</td>
+        <td class="num">${qty(j.qty)}</td><td class="num ${cls(j.pnl)}">${j.pnl == null ? "open" : sgn(j.pnl, usd)}</td>
+        <td class="num ${cls(j.r)}">${rr(j.r)}</td>
+        <td>${j.followed ? "Yes" : "No"}${j.call_id ? ` <small>(call #${j.call_id})</small>` : ""}</td><td>${tags || "–"}</td><td class="wide">${esc(j.notes)}</td>
         <td><button class="btn ghost small" type="button" data-del="${j.id}">Delete</button></td></tr>`;
-    }).join("") || `<tr><td colspan="11" class="wide">No trades logged yet.</td></tr>`;
-    const closed = rows.filter((j) => pnl(j) != null);
-    const wins = closed.filter((j) => pnl(j) > 0).length;
-    const total = closed.reduce((a, j) => a + pnl(j), 0);
-    const fol = closed.filter((j) => j.followed), folTotal = fol.reduce((a, j) => a + pnl(j), 0);
-    $("#jstats").innerHTML = closed.length
-      ? kpi(closed.length, "closed trades") + kpi(`${Math.round((wins / closed.length) * 100)}%`, "win rate") +
-        kpi(`${total > 0 ? "+" : ""}${usd(total)}`, "total P/L (USDT)") + kpi(`${folTotal > 0 ? "+" : ""}${usd(folTotal)}`, "P/L when following calls")
-      : "";
+    }).join("") || `<tr><td colspan="13" class="wide">No trades logged yet.</td></tr>`;
+    if (!st.closed) { $("#jstats").innerHTML = ""; $("#jinsights").innerHTML = ""; return; }
+    $("#jstats").innerHTML = kpi(st.closed, "closed trades") + kpi(`${st.win_rate}%`, "win rate") +
+      kpi(sgn(st.total, usd), "total P/L (USDT, after fees)") + kpi(sgn(st.expectancy, usd), "average per trade") +
+      kpi(st.avg_r == null ? "–" : rr(st.avg_r), `average result (${st.r_trades} with a stop)`) +
+      kpi(st.profit_factor == null ? "–" : st.profit_factor.toFixed(2), "profit factor") +
+      kpi(`${st.avg_win == null ? "–" : usd(st.avg_win)} / ${st.avg_loss == null ? "–" : usd(st.avg_loss)}`, "average win / loss");
+    const grp = (name, g) => g ? `<tr><td>${esc(name)}</td><td class="num">${g.n}</td><td class="num">${g.win_rate}%</td><td class="num ${cls(g.total)}">${sgn(g.total, usd)}</td><td class="num ${cls(g.avg)}">${sgn(g.avg, usd)}</td></tr>` : "";
+    const rowsT = [grp("Trades without a tagged mistake", st.without_mistake), grp("Trades with a mistake", st.with_mistake),
+      grp("Followed the app's call", st.followed), grp("Did not follow the app", st.not_followed),
+      ...Object.entries(st.by_tag || {}).map(([t, g]) => grp(`Tag: ${t}`, g))].join("");
+    const va = st.vs_app ? `<p class="hint">Linked to app calls (${st.vs_app.n} trades): you averaged ${rr(st.vs_app.my_avg_r)}, the app's calls averaged ${rr(st.vs_app.app_avg_r)}.</p>` : "";
+    const cost = st.with_mistake && st.with_mistake.total < 0 ? `<p class="hint"><b>Tagged mistakes have cost you ${usd(-st.with_mistake.total)} USDT</b> over ${st.with_mistake.n} trades.</p>` : "";
+    $("#jinsights").innerHTML = `<div class="card"><h3>What the numbers say</h3>${cost}${va}
+      <div class="table-wrap"><table class="grid"><thead><tr><th>Group</th><th class="num">Trades</th><th class="num">Win rate</th><th class="num">Total (USDT)</th><th class="num">Average (USDT)</th></tr></thead><tbody>${rowsT}</tbody></table></div>
+      <p class="hint">Groups with fewer than about 20 trades are too small to trust. Results include the fees you entered, not funding.</p></div>`;
   }
-  async function loadJournal() { renderJournal(await api("/api/journal")); }
+  async function loadJournal() {
+    const [payload, hist] = await Promise.all([api("/api/journal"), api("/api/calls/history").catch(() => [])]);
+    jCalls = [...(S.active_calls || []), ...hist.slice(0, 20)];
+    const d = (ms) => new Date(ms).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+    const keep = $("#j-call").value;
+    $("#j-call").innerHTML = `<option value="">None: my own idea</option>` + jCalls.map((c) =>
+      `<option value="${c.id}">#${c.id} · ${esc(c.symbol)} ${esc(c.market)} ${esc(c.call)} · ${d(c.created_at)}${c.status === "closed" ? " (closed)" : ""}</option>`).join("");
+    $("#j-call").value = keep;
+    renderJournal(payload);
+  }
+  $("#j-call").addEventListener("change", () => {
+    const c = jCalls.find((x) => String(x.id) === $("#j-call").value);
+    if (!c) return;
+    $("#j-symbol").value = c.symbol; $("#j-market").value = c.market; $("#j-side").value = c.side === "short" ? "short" : "long";
+    if (c.entry != null) $("#j-entry").value = +c.entry.toPrecision(8);
+    if (c.stop != null) $("#j-stop").value = +c.stop.toPrecision(8);
+    $("#j-followed").checked = true;
+  });
 
   // ------------------------------------------------------------ settings
   function renderSettings(force) {
@@ -612,6 +662,8 @@
       trade_date: $("#j-date").value, symbol: $("#j-symbol").value.trim().toUpperCase(), market: $("#j-market").value,
       side: $("#j-side").value, entry: $("#j-entry").value, exit: $("#j-exit").value, qty: $("#j-qty").value,
       followed: $("#j-followed").checked, notes: $("#j-notes").value,
+      stop: $("#j-stop").value, fees: $("#j-fees").value, call_id: $("#j-call").value,
+      tags: [...document.querySelectorAll("#j-tags input:checked")].map((i) => i.dataset.tag),
     };
     renderJournal(await api("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
     e.target.reset(); $("#j-date").valueAsDate = new Date(); $("#j-followed").checked = true;

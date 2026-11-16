@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import auth, engine, store, telegram, watch
+from . import auth, engine, journal as journal_stats, store, telegram, watch
 from .service import Advisor, clean, next_refresh_at
 from .watcher import Watcher, normalise
 
@@ -207,23 +207,34 @@ def watch_history(limit: int = 100):
     return clean(store.watch_history(min(max(limit, 1), 500)))
 
 
+def _journal_payload() -> dict:
+    rows = store.journal_list()
+    for j in rows:
+        j["pnl"], j["r"] = journal_stats.pnl(j), journal_stats.result_r(j)
+    return clean({"rows": rows, "stats": journal_stats.stats(rows),
+                  "tags": {"mistakes": list(C.JOURNAL_MISTAKE_TAGS), "good": list(C.JOURNAL_GOOD_TAGS)}})
+
+
 @app.get("/api/journal")
 def journal():
-    return clean(store.journal_list())
+    return _journal_payload()
 
 
 @app.post("/api/journal")
 def journal_add(body: dict):
-    for k in ("entry", "exit", "qty"):
+    for k in ("entry", "exit", "qty", "stop", "fees"):
         body[k] = float(body[k]) if body.get(k) not in (None, "") else None
+    body["call_id"] = int(body["call_id"]) if body.get("call_id") not in (None, "") else None
+    if not isinstance(body.get("tags"), list):
+        body["tags"] = []
     store.journal_add(body)
-    return clean(store.journal_list())
+    return _journal_payload()
 
 
 @app.delete("/api/journal/{entry_id}")
 def journal_delete(entry_id: int):
     store.journal_delete(entry_id)
-    return clean(store.journal_list())
+    return _journal_payload()
 
 
 @app.post("/api/telegram/test")

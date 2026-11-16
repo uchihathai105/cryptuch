@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from . import config as C
-from . import engine, screener, store, telegram
+from . import engine, fundamentals, screener, store, telegram
 from .binance import Binance, BinanceError
 from .indicators import add_indicators
 
@@ -39,6 +39,17 @@ def next_refresh_at(now: float | None = None, minutes: int | None = None) -> flo
     now = now or time.time()
     step = (minutes or C.REFRESH_MINUTES) * 60
     return (math.floor(now / step) + 1) * step + C.REFRESH_DELAY_SECONDS
+
+
+def zone_alert_text(r: dict, price: float) -> str | None:
+    """Alert text when `price` is inside the coin's buy-in zone and above the level that invalidates the idea."""
+    lo, hi = r["zone"]
+    if not (r["invalidation"] < price <= hi):
+        return None
+    f = engine.fmt
+    return (f"📍 <b>{r['base']}</b> reached its buy-in zone: price {f(price)} (zone {f(lo)}–{f(hi)})\n"
+            f"Screener verdict today: {r['verdict']} · score {r['score']}. Idea is wrong below {f(r['invalidation'])}.\n"
+            f"Check unlocks and news first, then buy gradually.")
 
 
 class Advisor:
@@ -211,6 +222,7 @@ class Advisor:
 
         alerts += self._track_active(coins)
         alerts += self._open_new(coins)
+        alerts += self._zone_alerts(by_symbol)
 
         self.state.update(regime=regime, coins=clean(coins),
                           lists={"top_volume": top_volume, "top_gainers": top_gainers, "watchlist": watchlist})
@@ -239,6 +251,9 @@ class Advisor:
                 if r:
                     results.append(r)
             listed = screener.rank(results)
+            funds = await fundamentals.fetch([r["base"] for r in listed])
+            for r in listed:
+                screener.apply_fundamentals(r, funds.get(r["base"].upper()))
             prev = store.previous_screen(day)
             store.save_screen(day, listed)
             new_rec = [r for r in listed if r["stage"] == "Recovering" and prev and prev.get(r["symbol"]) != "Recovering"]
@@ -255,6 +270,22 @@ class Advisor:
             sc["error"] = str(e)
         finally:
             sc["running"] = False
+
+    def _zone_alerts(self, by_symbol: dict) -> list[str]:
+        """Telegram when a screener coin with a Buy / Wait-for-pullback verdict falls into its buy-in zone."""
+        out, now_ms = [], int(time.time() * 1000)
+        for r in self.state["screener"].get("results", []):
+            if r.get("verdict") not in ("Buy", "Wait for pullback") or not r.get("zone"):
+                continue
+            t = by_symbol.get(r["symbol"])
+            if not t:
+                continue
+            msg = zone_alert_text(r, float(t["lastPrice"]))
+            if msg and not store.zone_alert_recent(r["symbol"], now_ms):
+                if telegram.configured():
+                    store.zone_alert_mark(r["symbol"], now_ms)
+                out.append(msg)
+        return out
 
     @staticmethod
     def eligible_screen(t: dict) -> bool:

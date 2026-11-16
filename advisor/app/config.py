@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.2.1 (2026-11-16)"
+RULES_VERSION = "1.2.2 (2026-11-16)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -86,6 +86,16 @@ SCREEN_LIST_SIZE = 25
 # "Should I buy?" verdict (v1.2.1): Buy only when Recovering, score high enough, and price still near the buy-in zone
 SCREEN_BUY_MIN_SCORE = 70
 SCREEN_BUY_MAX_ABOVE_ZONE = 8.0       # % the price may sit above the top of the buy-in zone
+# Project checklist (v1.2.2): supply data from CoinGecko. A "bad" flag turns a Buy into Wait.
+FUND_ENABLED = True
+COINGECKO_BASE = "https://api.coingecko.com/api/v3"
+FUND_FDV_MC_WARN, FUND_FDV_MC_BAD = 2.0, 4.0      # fully diluted value / market cap
+FUND_CIRC_PCT_WARN, FUND_CIRC_PCT_BAD = 60.0, 30.0  # % of the final supply already circulating
+ZONE_ALERT_COOLDOWN_DAYS = 3          # Telegram "price reached the buy-in zone": at most once per coin in this time
+# Journal tags: mistakes are what the journal adds up the cost of
+JOURNAL_MISTAKE_TAGS = ("Entered early", "Chased the price", "No stop-loss", "Moved the stop", "Position too big",
+                        "Revenge trade", "Ignored the app's call")
+JOURNAL_GOOD_TAGS = ("Followed my plan",)
 SCREEN_WEIGHTS = {
     "above_sma50": 20, "sma50_rising": 15, "higher_low": 20, "beats_btc": 15,
     "volume_returning": 10, "rsi_ok": 10, "not_extended": 10,

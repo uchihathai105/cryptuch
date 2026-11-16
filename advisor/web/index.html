@@ -91,7 +91,7 @@
         <thead><tr>
           <th>Coin</th><th>Stage</th><th class="num">Score</th><th>Buy?</th><th class="num">Price</th>
           <th class="num">From 1y high</th><th class="num">From 1y low</th><th class="num">30d vs BTC</th>
-          <th class="num">Volume trend</th><th>Buy-in zone</th><th class="num">Wrong below</th>
+          <th class="num">Volume trend</th><th>Dilution</th><th>Buy-in zone</th><th class="num">Wrong below</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -180,18 +180,23 @@
   <section id="tab-journal" class="panel" hidden>
     <div class="section-head">
       <h2>Trade journal</h2>
-      <p class="hint">Log the trades you actually placed, to compare your results with the app's calls.</p>
+      <p class="hint">Log the trades you actually placed. Add your planned stop-loss to see each result in R (money risked), link the trade to an app call, and tag your mistakes: the journal adds up what each mistake has cost you.</p>
     </div>
     <div id="jstats" class="kpis"></div>
+    <div id="jinsights"></div>
     <form id="jform" class="form card">
+      <label class="full">Follows an app call (optional)<select id="j-call"><option value="">None: my own idea</option></select></label>
       <label>Date<input id="j-date" type="date" required></label>
       <label>Coin<input id="j-symbol" placeholder="ETHUSDT" required></label>
       <label>Market<select id="j-market"><option value="futures">Futures</option><option value="spot">Spot</option></select></label>
       <label>Side<select id="j-side"><option value="long">Long / Buy</option><option value="short">Short</option></select></label>
       <label>Entry<input id="j-entry" type="number" step="any" required></label>
+      <label>Stop-loss (planned)<input id="j-stop" type="number" step="any"></label>
       <label>Exit<input id="j-exit" type="number" step="any"></label>
       <label>Quantity<input id="j-qty" type="number" step="any" required></label>
+      <label>Fees paid (USDT)<input id="j-fees" type="number" step="any" min="0"></label>
       <label class="check"><input id="j-followed" type="checkbox" checked> Followed the app's call</label>
+      <div class="full"><div class="label">What went wrong or right? (tick any that apply)</div><div id="j-tags" class="chips"></div></div>
       <label class="full">Notes<input id="j-notes" placeholder="Why you took it, what happened"></label>
       <button class="btn" type="submit">Add trade</button>
     </form>
@@ -199,7 +204,7 @@
       <table class="grid" id="jTable">
         <thead><tr>
           <th>Date</th><th>Coin</th><th>Market</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th>
-          <th class="num">Qty</th><th class="num">P/L (USDT)</th><th>Followed</th><th class="wide">Notes</th><th></th>
+          <th class="num">Qty</th><th class="num">P/L (USDT)</th><th class="num">Result (R)</th><th>Followed</th><th>Tags</th><th class="wide">Notes</th><th></th>
         </tr></thead>
         <tbody></tbody>
       </table>

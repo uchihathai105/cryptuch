@@ -3,6 +3,20 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.2.2 — 16 Nov 2026
+- Altcoin screener: new **Dilution** column and a **Project checklist** card. The server asks CoinGecko once a day for
+  market cap, fully diluted value (FDV) and supply of the listed coins. Flag: High when FDV / market cap ≥ 4 or under 30% of
+  the supply circulates; Medium when ≥ 2 or under 60%; otherwise Low (`FUND_*` in `config.py`). **A High flag turns a Buy into
+  Wait.** Supply unknown (CoinGecko unreachable, or coin not found) leaves the verdict but adds a "check unlocks yourself" note.
+  Unlock dates, vesting and news cannot be read automatically: they are listed as things to check yourself, with links.
+- New Telegram alert: a coin with verdict Buy or Wait for pullback whose price falls into its buy-in zone (and is still above
+  the level that invalidates the idea). At most once per coin per `ZONE_ALERT_COOLDOWN_DAYS` (3). Checked every 15 minutes.
+- Journal: optional planned stop-loss (gives each result in R), fees (results are net of fees), link to an app call, and tags for
+  mistakes (`JOURNAL_MISTAKE_TAGS`) or good habits. New summary: win rate, expectancy, profit factor, average win / loss, results
+  with and without tagged mistakes, per-tag totals, and your average R against the app's calls you linked. Existing databases
+  are upgraded automatically (new columns). `/api/journal` now returns `{rows, stats, tags}`.
+- Tests: `python -m tests.test_extras`.
+
 ## 1.2.1 — 16 Nov 2026
 - Altcoin screener: new **Buy?** column with a verdict per coin. **Buy** = stage Recovering, score ≥ `SCREEN_BUY_MIN_SCORE` (70)
   and price at most `SCREEN_BUY_MAX_ABOVE_ZONE` (8%) above the top of the buy-in zone. **Wait for pullback** = Recovering

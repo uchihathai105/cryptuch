@@ -111,3 +111,20 @@ def rank(results: list[dict]) -> list[dict]:
     listed = [r for r in results if r["stage"] != "Falling"]
     listed.sort(key=lambda r: (order[r["stage"]], -r["score"], r["drawdown"]))
     return listed[:C.SCREEN_LIST_SIZE]
+
+
+def apply_fundamentals(r: dict, f: dict | None) -> None:
+    """Attach the project checklist data. Heavy dilution turns a Buy into Wait; unknown supply adds a warning."""
+    f = f or {"flag": "unknown", "text": "Supply data not available: check the token unlock schedule yourself.",
+              "market_cap": None, "fdv": None, "fdv_mc": None, "circ_pct": None, "name": None,
+              "links": {"coingecko": None, "news": None}}
+    r["fundamentals"] = f
+    if r.get("verdict") != "Buy":
+        return
+    if f["flag"] == "bad":
+        r["verdict"] = "Wait"
+        r["verdict_reason"] = "Chart looks like a Buy, but dilution risk is high. " + f["text"]
+    elif f["flag"] == "warn":
+        r["verdict_reason"] += " Caution: " + f["text"]
+    elif f["flag"] == "unknown":
+        r["verdict_reason"] += " " + f["text"]
