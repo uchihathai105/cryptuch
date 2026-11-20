@@ -239,3 +239,16 @@ input, select { background: var(--bg); border: 1px solid var(--line); border-rad
 details summary { cursor: pointer; margin: 8px 0; font-size: 13px; color: var(--ink-2); }
 .form .full { grid-column: 1 / -1; }
 #j-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+
+/* Spot tab (v1.3) */
+.spot-list { display: flex; flex-direction: column; gap: 14px; margin: 10px 0 16px; }
+.spot-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.spot-head h3 { margin: 0; font-size: 18px; }
+.spot-head .sp { flex: 1; }
+.spot-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.spot-lv { border-collapse: collapse; font-size: 13px; width: 100%; }
+.spot-lv td { padding: 3px 0; } .spot-lv td:last-child { text-align: right; font-family: var(--mono); }
+.hchart .sl { fill: var(--good); } .hchart .sh { fill: var(--bad); } .hchart .now { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.hchart .sl.top, .hchart .sh.top { opacity: 1; } .hchart .sl:not(.top), .hchart .sh:not(.top) { opacity: 0.45; }
+.spot-strat h4 { margin: 10px 0 4px; font-size: 14px; }
+.spot-strat ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; }

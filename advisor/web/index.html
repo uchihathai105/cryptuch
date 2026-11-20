@@ -27,6 +27,7 @@
   <button role="tab" data-tab="long" class="tab" type="button">Long term</button>
   <button role="tab" data-tab="screen" class="tab" type="button">Altcoin screener</button>
   <button role="tab" data-tab="hours" class="tab" type="button">Hours</button>
+  <button role="tab" data-tab="spot" class="tab" type="button">Spot</button>
   <button role="tab" data-tab="watch" class="tab" type="button">Watch <span id="watchCount" class="count"></span></button>
   <button role="tab" data-tab="active" class="tab" type="button">Active calls <span id="activeCount" class="count"></span></button>
   <button role="tab" data-tab="journal" class="tab" type="button">Journal</button>
@@ -122,6 +123,23 @@
       </table>
     </div>
     <div id="hoursDetail"></div>
+  </section>
+
+  <!-- Spot: buy-and-hold coins you type in -->
+  <section id="tab-spot" class="panel" hidden>
+    <div class="section-head">
+      <h2>Spot: buy today?</h2>
+      <p class="hint">Coins you want to buy on the spot market (no leverage, no shorting). For each coin: when in the Vietnam day the 1-hour candle usually makes the <b>lowest</b> and the <b>highest</b> price, and a rule-based verdict for today: <b>Buy now</b>, <b>Buy on dip</b> (limit order in a zone), <b>Wait</b> or <b>Avoid</b>, with entry, stop, two targets and the size for your account.</p>
+      <p class="hint"><b>Read with care:</b> the low / high hours come from about 90 days, so each hour has only a few hits: it is a tendency of the past, not a schedule. The verdict is a rule, not a prediction or financial advice.</p>
+    </div>
+    <form id="spotForm" class="inline watch-add">
+      <input id="spotSym" placeholder="Add coin, e.g. SOL" aria-label="Spot coin to add" autocomplete="off">
+      <button class="btn" type="submit">Add</button>
+    </form>
+    <p id="spotMsg" class="hint" hidden></p>
+    <p id="spotStatus" class="hint"></p>
+    <div id="spotList" class="spot-list"></div>
+    <div id="spotStrategy"></div>
   </section>
 
   <!-- Watch: volatile coins you type in -->

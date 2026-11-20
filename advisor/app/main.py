@@ -12,8 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
-from . import auth, engine, hourly, journal as journal_stats, review, store, telegram, watch
+from . import auth, engine, hourly, journal as journal_stats, review, spot, store, telegram, watch
 from .service import Advisor, clean, next_refresh_at
+from .spotter import Spotter
 from .watcher import Watcher, normalise
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -23,6 +24,7 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 
 advisor = Advisor()
 watcher = Watcher(advisor)
+spotter = Spotter(advisor)
 
 
 async def scheduler():
@@ -45,9 +47,20 @@ async def watch_scheduler():
         await watcher.refresh()
 
 
+async def spot_scheduler():
+    """Spot tab: analyse on start, then ~5 seconds after every 5-minute candle close."""
+    await spotter.refresh()
+    while True:
+        wait = max(1.0, next_refresh_at(minutes=C.SPOT_REFRESH_MINUTES) - time.time())
+        spotter.state["next_refresh"] = time.time() + wait
+        await asyncio.sleep(wait)
+        await spotter.refresh()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(_app):
-    tasks = [asyncio.create_task(scheduler()), asyncio.create_task(watch_scheduler())]
+    tasks = [asyncio.create_task(scheduler()), asyncio.create_task(watch_scheduler()),
+             asyncio.create_task(spot_scheduler())]
     yield
     for t in tasks:
         t.cancel()
@@ -244,6 +257,50 @@ def watch_remove(symbol: str):
 @app.get("/api/watch/history")
 def watch_history(limit: int = 100):
     return clean(store.watch_history(min(max(limit, 1), 500)))
+
+
+# ---------------------------------------------------------------- Spot tab
+def _spot_payload() -> dict:
+    w = spotter.state
+    symbols = store.spot_coins()
+    coins = [w["coins"].get(s) or {"symbol": s, "base": s[:-4], "pending": True,
+                                   "note": "Waiting for the first analysis…"} for s in symbols]
+    return clean({"now": time.time(), "coins": coins, "last_refresh": w["last_refresh"], "last_error": w["last_error"],
+                  "refreshing": w["refreshing"], "next_refresh": w["next_refresh"], "max_coins": C.SPOT_MAX_COINS,
+                  "strategy": spot.STRATEGY, "settings": store.get_settings(),
+                  "rules": {"stop_atr": C.SPOT_STOP_ATR, "t1_r": C.SPOT_T1_R, "t2_r": C.SPOT_T2_R,
+                            "days": C.SPOT_DAYS, "min_score": C.SPOT_BUY_MIN_SCORE}})
+
+
+@app.get("/api/spot")
+def spot_state():
+    return JSONResponse(_spot_payload())
+
+
+@app.post("/api/spot")
+async def spot_add(body: dict):
+    try:
+        sym = normalise(body.get("symbol", ""))
+        coins = store.spot_coins()
+        if sym in coins:
+            raise ValueError(f"{sym} is already in the list")
+        if len(coins) >= C.SPOT_MAX_COINS:
+            raise ValueError(f"At most {C.SPOT_MAX_COINS} spot coins (keeps Binance request weight low)")
+        await spotter.validate(sym)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Could not check {body.get('symbol', '')} on Binance: {e}")
+    store.spot_add(sym)
+    asyncio.create_task(spotter.refresh())
+    return JSONResponse(_spot_payload())
+
+
+@app.delete("/api/spot/{symbol}")
+def spot_remove(symbol: str):
+    store.spot_remove(symbol.upper())
+    spotter.state["coins"].pop(symbol.upper(), None)
+    return JSONResponse(_spot_payload())
 
 
 def _journal_payload() -> dict:

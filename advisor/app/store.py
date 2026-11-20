@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS journal (
   qty REAL, followed INTEGER, notes TEXT
 );
 CREATE TABLE IF NOT EXISTS hourly_profile (symbol TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, profile TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS spot_coins (symbol TEXT PRIMARY KEY, added_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS spot_meta (key TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS spot_stats (symbol TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, stats TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS zone_alerts (symbol TEXT PRIMARY KEY, alerted_at INTEGER NOT NULL);
 """)
 
@@ -337,3 +340,38 @@ def watch_recent_results(symbol: str | None, limit: int) -> list[float]:
         args.append(symbol)
     rows = _q(f"SELECT result_1h_r FROM watch_signals WHERE {where} ORDER BY created_at DESC LIMIT ?", (*args, limit))
     return [r["result_1h_r"] for r in rows]
+
+
+# ---------------------------------------------------------------- Spot tab (v1.3)
+def spot_coins() -> list[str]:
+    """The user's spot coins. The first time, the default coins (NEAR, ZEC) are put in; after that only the user changes the list."""
+    if not _q("SELECT 1 FROM spot_meta WHERE key='seeded'").fetchone():
+        now = int(time.time() * 1000)
+        for i, sym in enumerate(C.SPOT_DEFAULT_COINS):
+            _q("INSERT OR IGNORE INTO spot_coins(symbol, added_at) VALUES(?, ?)", (sym, now + i))
+        _q("INSERT INTO spot_meta(key) VALUES('seeded')", commit=True)
+    return [r["symbol"] for r in _q("SELECT symbol FROM spot_coins ORDER BY added_at, symbol").fetchall()]
+
+
+def spot_add(symbol: str) -> None:
+    spot_coins()                      # make sure the defaults were put in first
+    _q("INSERT OR IGNORE INTO spot_coins(symbol, added_at) VALUES(?, ?)", (symbol, int(time.time() * 1000)), commit=True)
+
+
+def spot_remove(symbol: str) -> None:
+    spot_coins()
+    with _lock:
+        _db.execute("DELETE FROM spot_coins WHERE symbol=?", (symbol,))
+        _db.execute("DELETE FROM spot_stats WHERE symbol=?", (symbol,))
+        _db.commit()
+
+
+def spot_stats_save(symbol: str, stats: dict, now_ms: int) -> None:
+    _q("INSERT INTO spot_stats(symbol, computed_at, stats) VALUES(?,?,?) "
+       "ON CONFLICT(symbol) DO UPDATE SET computed_at=excluded.computed_at, stats=excluded.stats",
+       (symbol, now_ms, json.dumps(stats)), commit=True)
+
+
+def spot_stats_get(symbol: str) -> dict | None:
+    r = _q("SELECT * FROM spot_stats WHERE symbol=?", (symbol,)).fetchone()
+    return {"computed_at": r["computed_at"], "stats": json.loads(r["stats"])} if r else None

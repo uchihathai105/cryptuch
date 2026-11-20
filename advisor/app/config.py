@@ -15,7 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "advisor.db"
 LOCAL_CONFIG = ROOT / "config.local.json"
 
-RULES_VERSION = "1.2.4 (2026-11-16)"
+RULES_VERSION = "1.3.0 (2026-11-20)"
 
 # ---------------------------------------------------------------- Binance
 SPOT_BASE = "https://api.binance.com"
@@ -104,6 +104,21 @@ HOURLY_NOTABLE_T = 3.0                 # |t| needed before an hour's average mov
 HOURLY_REFRESH_DAYS = 7                # profiles older than this are rebuilt
 HOURLY_PAUSE_SECONDS = 0.6             # between history pages, to stay far below Binance limits
 HOURLY_MAX_COINS = 60
+# Spot tab (v1.3): spot-only coins, when the 1h candle makes the day's low / high (Vietnam day), buy-today advice
+SPOT_DEFAULT_COINS = ("NEARUSDT", "ZECUSDT")   # put in the list the first time the tab is used
+SPOT_MAX_COINS = 20
+SPOT_DAYS = 90                      # days of 1h candles behind the low / high statistics
+SPOT_MIN_DAYS = 30                  # fewer complete days than this: no statistics
+SPOT_STATS_REFRESH_HOURS = 12       # statistics are rebuilt when older than this
+SPOT_REFRESH_MINUTES = 5
+SPOT_RSI_HOT = 70                   # 1h RSI at or above this: do not buy at market
+SPOT_RSI_COLD = 32                  # 1h RSI at or below this: oversold, a bounce is possible but the trend is against you
+SPOT_RANGE_LOW = 0.35               # price in the lowest 35% of today's range = a cheap part of the day
+SPOT_RANGE_HIGH = 0.70              # above 70% = an expensive part of the day
+SPOT_STOP_ATR = 1.5                 # stop distance in 1h ATR below the entry (never tighter than the day's low)
+SPOT_T1_R, SPOT_T2_R = 1.5, 3.0     # same targets as the day-trade rules
+SPOT_MIN_RR = 1.5                   # below this reward-to-risk the verdict is Wait
+SPOT_BUY_MIN_SCORE = 60             # score needed for Buy now / Buy on dip
 # Journal tags: mistakes are what the journal adds up the cost of
 JOURNAL_MISTAKE_TAGS = ("Entered early", "Chased the price", "No stop-loss", "Moved the stop", "Position too big",
                         "Revenge trade", "Ignored the app's call")

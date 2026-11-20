@@ -119,6 +119,10 @@ class Binance:
                                    market="futures")
         return klines_to_frame(data)
 
+    async def spot_price(self, symbol: str) -> float:
+        r = await self._get(self.spot_base, "/api/v3/ticker/price", {"symbol": symbol})
+        return float(r["price"])
+
     async def history_1h(self, symbol: str, days: int) -> pd.DataFrame:
         """About `days` days of closed 1h spot candles with quote volume and taker-buy volume (pages of 1000)."""
         end = int(time.time() * 1000)
@@ -136,8 +140,8 @@ class Binance:
             start = nxt
             await asyncio.sleep(config.HOURLY_PAUSE_SECONDS)
         df = pd.DataFrame(
-            [[int(k[0]), float(k[1]), float(k[4]), float(k[7]), float(k[10]), int(k[6])] for k in rows],
-            columns=["open_time", "open", "close", "quote_volume", "taker_buy_quote", "close_time"])
+            [[int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[7]), float(k[10]), int(k[6])] for k in rows],
+            columns=["open_time", "open", "high", "low", "close", "quote_volume", "taker_buy_quote", "close_time"])
         df = df[df["close_time"] < int(time.time() * 1000)]
         return df.drop_duplicates("open_time").sort_values("open_time").reset_index(drop=True)
 

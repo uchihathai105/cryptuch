@@ -3,6 +3,22 @@
 Record every change to `app/config.py` or `app/engine.py` here and bump `RULES_VERSION`,
 so the track record can be compared fairly before and after (URS N07).
 
+## 1.3.0 — 20 Nov 2026
+- New **Spot** tab for coins you buy on the spot market (no leverage, no shorting). NEAR and ZEC are put in the first time; you add
+  coins by typing them (max `SPOT_MAX_COINS` = 20) and remove them with ×. Removed default coins do not come back.
+- **Low / high hours:** from `SPOT_DAYS` (90) days of 1h candles, the share of Vietnam days (00:00–24:00) on which the day's lowest and
+  highest 1h candle was in each hour, with the three most common hours and how often the low came before the high. Stored in
+  `spot_stats`, rebuilt every `SPOT_STATS_REFRESH_HOURS` (12). Each hour has only a few hits in 90 days, so the page calls it a tendency; it is
+  only called "strong" when the top three hours hold at least 35% of both lows and highs (random would give 12.5%).
+- **Buy-today verdict** (every 5 minutes): score from 6 checks (1h EMA 20/50 trend 20, price above EMA 50 15, RSI 40–65 15, price in the
+  cheaper part of today's range 20, not stretched from EMA 20 15, volume 15). Avoid = price under a falling short-term trend; Buy now = score
+  >= `SPOT_BUY_MIN_SCORE` (60), not in the top 30% of the range, RSI < 70; Buy on dip = limit order in a zone (RSI hot, price high in the range, or a
+  stop that would be too wide); otherwise Wait. Stop = lowest of the last 12 1h lows, today's low and 1.5 ATR below the entry, minus 0.1 ATR; targets
+  1.5R and 3R; a stop more than 8% away turns the call into Wait. Size comes from the Settings risk %. **Not backtested.**
+- Spot plan (6 points) is shown at the bottom of the tab. Calls from this tab are not recorded in Active calls.
+- `history_1h` now also returns the high and low of each candle. API: `GET/POST /api/spot`, `DELETE /api/spot/{symbol}`.
+- Tests: `python -m tests.test_spot`.
+
 ## 1.2.4 — 16 Nov 2026
 - New **Hours** tab: for each coin, which Vietnam-time hours carry the most trading volume, how aggressive the buyers are
   (taker-buy share) and how the price moved, from one year of 1h Binance candles (`HOURLY_DAYS`). Signal rules are unchanged.

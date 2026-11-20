@@ -36,7 +36,7 @@
   const clock = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateTime = (ms) => new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const TONE = { Recovering: "good", Basing: "warn", "Wait for pullback": "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Sell: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", New: "" };
+  const TONE = { Recovering: "good", Basing: "warn", "Wait for pullback": "warn", Falling: "bad", Long: "good", Buy: "good", Accumulate: "good", Bull: "good", Hold: "", Short: "bad", Sell: "bad", Exit: "bad", Reduce: "bad", Bear: "bad", Neutral: "", Wait: "", "Buy now": "good", "Buy on dip": "warn", Avoid: "bad", New: "" };
   function pill(label, conf) {
     const tone = TONE[label] ?? "";
     const c = conf != null && label !== "Wait" ? `<span class="conf">${conf}</span>` : "";
@@ -477,6 +477,81 @@
     } catch (err) { msg.textContent = String(err.message || err).replace(/^\d+ /, "").replace(/^\{"detail":"(.*)"\}$/, "$1"); }
   });
 
+  // ------------------------------------------------------------ spot (buy today?)
+  let SP = null, spotTimer = null;
+  async function loadSpot() {
+    SP = await api("/api/spot");
+    renderSpot();
+    if (!spotTimer) spotTimer = setInterval(() => { if (!$("#tab-spot").hidden) loadSpot().catch(() => {}); }, 60000);
+  }
+  function spotCard(c) {
+    const del = `<button class="btn ghost small" type="button" data-sdel="${esc(c.symbol)}" title="Remove ${esc(c.base)}" aria-label="Remove ${esc(c.base)}">×</button>`;
+    if (c.pending) return `<div class="card"><div class="spot-head"><h3>${esc(c.base)}</h3><span class="hint">${esc(c.note || "Waiting for the first analysis…")}</span><span class="sp"></span>${del}</div></div>`;
+    const a = c.advice, lv = a.levels, sz = a.sizing, tone = { good: "ok", bad: "no" };
+    const levels = lv ? `<table class="spot-lv">
+        <tr><td>${a.verdict === "Buy on dip" ? "Limit buy (middle of zone)" : "Entry"}</td><td>${px(lv.entry)}</td></tr>
+        ${a.zone ? `<tr><td>Buy zone</td><td>${px(a.zone[0])} – ${px(a.zone[1])}</td></tr>` : ""}
+        <tr><td>Stop-loss (sell if price falls to)</td><td class="down">${px(lv.stop)} <small>(${pct(-lv.risk_pct)})</small></td></tr>
+        <tr><td>Target 1 (sell half, stop to entry)</td><td class="up">${px(lv.t1)} <small>(${pct((lv.t1 / lv.entry - 1) * 100)})</small></td></tr>
+        <tr><td>Target 2 (sell the rest)</td><td class="up">${px(lv.t2)} <small>(${pct((lv.t2 / lv.entry - 1) * 100)})</small></td></tr>
+        ${sz && sz.qty ? `<tr><td>Size for a ${pct(S?.settings?.risk_pct ?? 1, 1).replace("+", "")} risk</td><td>${qty(sz.qty)} ${esc(c.base)} ≈ ${usd(sz.notional)} USDT</td></tr>` : ""}
+      </table>${sz && sz.warnings && sz.warnings.length ? `<ul class="warnings">${sz.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}` : `<p class="hint">No entry today: nothing to buy at a fair price.</p>`;
+    const checks = a.checks.map((k) => `<li class="${k.ok ? "ok" : "no"}"><span class="ic">${k.ok ? "✓" : "✗"}</span><span>${esc(k.name)} <small class="hint">— ${esc(k.detail)}</small></span></li>`).join("");
+    return `<div class="card">
+      <div class="spot-head"><h3>${esc(c.base)}</h3><span class="mono">${px(c.price)}</span><span class="${cls(a.pct24)}">${pct(a.pct24)} 24h</span>
+        ${pill(a.verdict)}<span class="hint">score ${a.score}/100</span><span class="sp"></span>${del}</div>
+      <div class="spot-cols">
+        <div><h4>Today's advice</h4><ul class="checks">${a.reasons.map((r) => `<li><span class="ic">›</span><span>${esc(r)}</span></li>`).join("")}</ul>${levels}</div>
+        <div><h4>Where is the price today?</h4>
+          <p class="hint">Today's low <b>${px(a.today_low)}</b> (${pct(a.dist_from_low_pct)} from here), today's high <b>${px(a.today_high)}</b> (${pct(a.dist_from_high_pct)}). Price sits at <b>${(a.pos_in_range * 100).toFixed(0)}%</b> of today's range. 1h RSI ${a.rsi.toFixed(0)}.</p>
+          <ul class="checks">${checks}</ul></div>
+      </div>
+      ${spotHours(c, a)}
+      <p class="hint">${c.note ? esc(c.note) + " · " : ""}Updated ${clock(c.updated / 1000)}. The advice is rebuilt every 5 minutes; stops and targets are rules, check them against the chart before placing orders.</p></div>`;
+  }
+  function spotHours(c, a) {
+    const st = c.stats;
+    if (!st) return `<p class="hint">Low / high hour statistics are not ready yet.</p>`;
+    const W = 720, Hh = 150, bw = W / 24, mx = Math.max(...st.low, ...st.high, 12.5);
+    const bars = (arr, k, label) => arr.map((v, i) => {
+      const h = (v / mx) * (Hh - 24), top = (k === "sl" ? st.low_top : st.high_top).includes(i);
+      return `<rect class="${k}${top ? " top" : ""}" x="${i * bw + 2}" y="${Hh - 18 - h}" width="${bw - 4}" height="${Math.max(h, 0.5)}"><title>${hh(i)}: the day's ${label} was in this hour on ${v.toFixed(0)}% of ${st.days} days (${(label === "low" ? st.low_n : st.high_n)[i]} days)</title></rect><text x="${i * bw + bw / 2}" y="${Hh - 4}" text-anchor="middle" class="hl">${i}</text>`;
+    }).join("");
+    const nowX = a.hour * bw + bw / 2;
+    const chart = (arr, k, label) => `<svg viewBox="0 0 ${W} ${Hh}" class="hchart" role="img" aria-label="How often the day's ${label} is in each hour">${bars(arr, k, label)}<line x1="${nowX}" x2="${nowX}" y1="0" y2="${Hh - 18}" class="now"><title>Now (${hh(a.hour)})</title></line></svg>`;
+    const top = (arr, idx) => idx.filter((i) => arr[i] > 0).map((i) => `${hh(i)} <small>${arr[i].toFixed(0)}%</small>`).join(" · ");
+    return `<div class="spot-cols"><div><h4>When the day's <span class="up">low</span> happens (Vietnam time)</h4>${chart(st.low, "sl", "low")}<p class="hint">Most often: ${top(st.low, st.low_top)}</p></div>
+      <div><h4>When the day's <span class="down">high</span> happens</h4>${chart(st.high, "sh", "high")}<p class="hint">Most often: ${top(st.high, st.high_top)}</p></div></div>
+      <ul class="checks">${c.windows.notes.map((n) => `<li><span class="ic">i</span><span>${esc(n)}</span></li>`).join("")}</ul>
+      <p class="hint">Share of the last ${st.days} Vietnam days (00:00–24:00) on which the lowest / highest 1h candle was in each hour; the dashed line is now. Built ${dateTime(c.stats_at)}, rebuilt every 12 hours.</p>`;
+  }
+  function renderSpot() {
+    if (!SP) return;
+    $("#spotStatus").textContent = `${SP.coins.length} of ${SP.max_coins} coins · ` +
+      (SP.last_refresh ? `updated ${clock(SP.last_refresh)}, next ${clock(SP.next_refresh)}` : "waiting for the first analysis…") +
+      (SP.last_error ? ` · last refresh failed: ${SP.last_error}` : "");
+    $("#spotList").innerHTML = SP.coins.map(spotCard).join("") || `<p class="hint">No coins yet. Type one above, for example SOL.</p>`;
+    $("#spotStrategy").innerHTML = `<div class="card spot-strat"><h3>How to trade spot: the plan</h3>${SP.strategy.map((s) =>
+      `<h4>${esc(s.title)}</h4><ul>${s.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`).join("")}
+      <p class="hint">Rules used: score from 6 checks (trend, price vs EMA 50, RSI, position in today's range, not stretched, volume); a call needs a score of at least ${SP.rules.min_score}. Stop: ${SP.rules.stop_atr} × 1h ATR below the entry or below today's low / the last 12 hours' low, whichever is lower. Targets ${SP.rules.t1_r}R and ${SP.rules.t2_r}R. Not backtested: treat it as a checklist, and track real trades in the Journal.</p></div>`;
+  }
+  $("#spotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = $("#spotSym").value.trim(), msg = $("#spotMsg");
+    if (!v) return;
+    msg.hidden = false; msg.textContent = "Checking on Binance…";
+    try {
+      SP = await api("/api/spot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: v }) });
+      $("#spotSym").value = ""; msg.hidden = true; renderSpot();
+      setTimeout(() => loadSpot().catch(() => {}), 8000);
+    } catch (err) { msg.textContent = String(err.message || err).replace(/^\d+ /, "").replace(/^\{"detail":"(.*)"\}$/, "$1"); }
+  });
+  $("#spotList").addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-sdel]"); if (!del) return;
+    if (!confirm(`Remove ${del.dataset.sdel.replace(/USDT$/, "")} from the Spot list?`)) return;
+    try { SP = await api(`/api/spot/${encodeURIComponent(del.dataset.sdel)}`, { method: "DELETE" }); renderSpot(); } catch (err) { showError(err.message); }
+  });
+
   // ------------------------------------------------------------ journal
   let J = { rows: [], stats: {}, tags: { mistakes: [], good: [] } }, jCalls = [];
   const sgn = (x, f) => (x == null ? "–" : `${x > 0 ? "+" : ""}${f(x)}`);
@@ -697,6 +772,7 @@
     if (t.dataset.tab === "watch") { loadWatchHistory(); }
     if (t.dataset.tab === "journal") loadJournal().catch(() => {});
     if (t.dataset.tab === "hours") loadHours().catch(() => {});
+    if (t.dataset.tab === "spot") loadSpot().catch(() => {});
     if (t.dataset.tab === "settings" && S) renderSettings(true);
   }));
   $("#listSeg").addEventListener("click", (e) => {
