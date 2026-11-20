@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config as C
@@ -89,7 +89,12 @@ def logout():
 
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html")
+    """Serve the page with the files' modification time added to the script and style links, so a browser never
+    keeps an old app.js after an update (an old script made new tabs show but not work)."""
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    for name in ("app.js", "style.css"):
+        html = html.replace(f"/static/{name}", f"/static/{name}?v={int((WEB / name).stat().st_mtime)}")
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 def _with_sizing(coins: dict, settings: dict) -> dict:
